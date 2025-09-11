@@ -15,6 +15,8 @@ const envSchema = z.object({
   GOOGLE_MAPS_API_KEY: z
     .string()
     .min(8, "GOOGLE_MAPS_API_KEY must be at least 8 characters long"),
+  RAZORPAY_KEY_ID: z.string(),
+  RAZORPAY_KEY_SECRET: z.string(),
 });
 
 const parsed = envSchema.safeParse(process.env);

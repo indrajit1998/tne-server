@@ -1,5 +1,6 @@
 import axios from "axios";
 import env from "../lib/env";
+import logger from "../lib/logger";
 
 interface LatLng {
   lat: number;
@@ -59,10 +60,8 @@ export async function getPlacePredictions(
     const { data } = await axios.get<AutocompleteApiResponse>(AUTOCOMPLETE_URL, {
       params: { input: query, key: API_KEY, types: "address" },
     });
-
-    console.log(data)
     if (data.status !== "OK" || !data.predictions) {
-      console.error("Autocomplete API Error:", data.status);
+      logger.info(`Autocomplete API Error: ${data.status}`);
       return [];
     }
 
@@ -71,7 +70,7 @@ export async function getPlacePredictions(
       placeId: p.place_id,
     }));
   } catch (error) {
-    console.error("Prediction fetch failed:", error);
+    logger.error(`Prediction fetch failed: ${error}`);
     return [];
   }
 }
@@ -91,7 +90,7 @@ export async function getPlaceDetails(
     });
 
     if (data.status !== "OK" || !data.result) {
-      console.error("Place Details API Error:", data.status);
+      logger.error(`Place Details API Error: ${data.status}`);
       return null;
     }
 
@@ -124,7 +123,7 @@ export async function getPlaceDetails(
       components,
     };
   } catch (error) {
-    console.error("Details fetch failed:", error);
+    logger.error(`Details fetch failed: ${error}`);
     return null;
   }
 }
