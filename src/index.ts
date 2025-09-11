@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import env from "./lib/env";
-import "dotenv/config"; 
 import logger from "./lib/logger";
 import requestLogger from "./middlewares/requestLogger";
 import errorHandler from "./middlewares/errorHandler";
@@ -11,17 +10,14 @@ import profileRoutes from "./routes/UserRouts/profile";
 import { CODES } from "./constants/statusCodes";
 import cookieParser from "cookie-parser";
 import connectDb from "./lib/connectDb";
-
+import locationRouter from "./routes/location/location.router";
 
 const PORT = parseInt(env.PORT, 10);
 
 const app = express();
 connectDb(env.DATABASE_URL);
 
-
-
-app.use(cors(
-));
+app.use(cors());
 app.use(express.json());
 
 app.use(requestLogger);
@@ -29,7 +25,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", profileRoutes);
-
+app.use("/api/v1/location", locationRouter);
 
 app.get("/", (req, res) => {
   res

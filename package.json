@@ -3,7 +3,8 @@
   "module": "src/index.ts",
   "type": "module",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/cookie-parser": "^1.4.9"
   },
   "scripts": {
     "dev": "bun run --watch src/index.ts",
@@ -16,8 +17,11 @@
     "@logtail/pino": "^0.5.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "axios": "^1.11.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.1",
     "pino": "^9.9.5",
     "pino-http": "^10.5.0",

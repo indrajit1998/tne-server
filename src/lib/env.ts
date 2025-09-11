@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-
-
 const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
@@ -10,8 +8,13 @@ const envSchema = z.object({
   APP_NAME: z.string().default("tne-server"),
   LOGTAIL_SOURCE_TOKEN: z.string().optional(),
   DATABASE_URL: z.url(),
-  SEND_MESSAGE_API_KEY: z.string().url(),
-  JWT_SECRET: z.string().min(8, "JWT_SECRET must be at least 8 characters long"),
+  SEND_MESSAGE_API_KEY: z.string(),
+  JWT_SECRET: z
+    .string()
+    .min(8, "JWT_SECRET must be at least 8 characters long"),
+  GOOGLE_MAPS_API_KEY: z
+    .string()
+    .min(8, "GOOGLE_MAPS_API_KEY must be at least 8 characters long"),
 });
 
 const parsed = envSchema.safeParse(process.env);
