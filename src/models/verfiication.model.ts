@@ -20,7 +20,6 @@ const VerificationSchema = new Schema<Verification>(
   },
   { timestamps: true }
 );
-
 VerificationSchema.index({ phoneNumber: 1, code: 1 }, { unique: true });
 VerificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
