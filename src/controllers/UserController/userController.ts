@@ -8,6 +8,7 @@ import axios from "axios";
 import FormData from "form-data";
 import env from "../../lib/env";
 import jwt from "jsonwebtoken";
+import type { AuthRequest } from "../../middlewares/authMiddleware.js";
 import { cookiesOption } from "../../constants/constant";
 
 
@@ -81,13 +82,11 @@ export const generateOtp = async (req: Request, res: Response) => {
       {
         headers: {
           ...formData.getHeaders(),
-          Cookie: "SERVERID=webC1",
         },
         maxBodyLength: Infinity,
       }
     );
-    const token=jwt.sign({_id:user._id,phoneNumber:validPhone},env.JWT_SECRET,{expiresIn:"7d"});
-    res.cookie("token",token,cookiesOption);
+    
 
     console.log("✅ SMS API Response:", smsResponse.data);
 
@@ -159,6 +158,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
     await user.save();
     
     await Verification.deleteOne({ phoneNumber: validPhone });
+    const token=jwt.sign({_id:user._id,phoneNumber:validPhone},env.JWT_SECRET,{expiresIn:"7d"});
+    res.cookie("token",token,cookiesOption);
 
     return res
       .status(CODES.OK)
@@ -172,12 +173,16 @@ export const verifyOtp = async (req: Request, res: Response) => {
 };
 
 
-export const registerUser = async (req: Request, res: Response) => {
+export const registerUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { phoneNumber, firstName, lastName, profilePictureUrl, email } = req.body;
+    const userId = typeof req.user === "string" ? req.user : req.user?._id;
+    if (!userId) {
+      return res.status(CODES.UNAUTHORIZED).json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+    const { firstName, lastName, profilePictureUrl, email } = req.body;
 
     // ✅ Required fields check
-    if (!phoneNumber || !firstName || !lastName) {
+    if ( !firstName || !lastName) {
       return res
         .status(CODES.BAD_REQUEST)
         .json(
@@ -202,25 +207,8 @@ export const registerUser = async (req: Request, res: Response) => {
           )
         );
     }
-
-    // ✅ Validate phone
-    const resultPhone = phoneSchema.safeParse(phoneNumber);
-    if (!resultPhone.success) {
-      return res
-        .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(
-            CODES.BAD_REQUEST,
-            null,
-            resultPhone.error.issues[0]?.message || "Invalid phone number"
-          )
-        );
-    }
-
-    const validPhone = resultPhone.data;
-
     // ✅ Check if user exists
-    const user = await User.findOne({ phoneNumber: validPhone });
+    const user = await User.findById(userId);
     if (!user) {
       return res
         .status(CODES.NOT_FOUND)
@@ -243,11 +231,10 @@ export const registerUser = async (req: Request, res: Response) => {
 
     // ✅ Update user profile
     const onboardedUser = await User.findOneAndUpdate(
-      { phoneNumber: validPhone },
-      { firstName, lastName, profilePictureUrl, email, onboardingCompleted: true },
+        { firstName, lastName, profilePictureUrl, email, onboardingCompleted: true },
       { new: true } // <-- return updated user
     );
-    const token=jwt.sign({_id:user._id,phoneNumber:validPhone},env.JWT_SECRET,{expiresIn:"7d"});
+    const token=jwt.sign({_id:user._id},env.JWT_SECRET,{expiresIn:"7d"});
     res.cookie("token",token,cookiesOption);
 
     return res
