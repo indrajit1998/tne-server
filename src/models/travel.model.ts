@@ -41,7 +41,7 @@ interface Travel {
 
 const travelSchema = new Schema<Travel>(
   {
-    travelerId: { type: Schema.Types.ObjectId, required: true },
+    travelerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     fromAddress: {
       street: { type: String, required: true },
       city: { type: String, required: true },
