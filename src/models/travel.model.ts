@@ -8,6 +8,8 @@ interface Travel {
     state: string;
     postalCode: string;
     country: string;
+    flatNo: string;
+    landmark?: string;
   };
   toAddress: {
     street: string;
@@ -15,6 +17,8 @@ interface Travel {
     state: string;
     postalCode: string;
     country: string;
+    flatNo: string;
+    landmark?: string;
   };
   toCoordinates: {
     type: "Point";
@@ -24,6 +28,7 @@ interface Travel {
     type: "Point";
     coordinates: [number, number];
   };
+  distance: string;
   expectedStartDate: Date;
   expectedEndDate: Date;
   modeOfTravel: "air" | "roadways" | "train";
@@ -48,6 +53,8 @@ const travelSchema = new Schema<Travel>(
       state: { type: String, required: true },
       postalCode: { type: String, required: true },
       country: { type: String, required: true },
+      flatNo: { type: String, required: true },
+      landmark: { type: String, required: false },
     },
     toAddress: {
       street: { type: String, required: true },
@@ -55,6 +62,8 @@ const travelSchema = new Schema<Travel>(
       state: { type: String, required: true },
       postalCode: { type: String, required: true },
       country: { type: String, required: true },
+      flatNo: { type: String, required: true },
+      landmark: { type: String, required: false },
     },
     toCoordinates: {
       type: { type: String, enum: ["Point"], required: true },
@@ -63,6 +72,10 @@ const travelSchema = new Schema<Travel>(
     fromCoordinates: {
       type: { type: String, enum: ["Point"], required: true },
       coordinates: { type: [Number], required: true },
+    },
+    distance: {
+      type: String,
+      required: true,
     },
     expectedStartDate: { type: Date, required: true },
     expectedEndDate: { type: Date, required: true },

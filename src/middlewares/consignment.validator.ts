@@ -29,8 +29,7 @@ export const createConsignmentSchema = z.object({
     subCategory: z.string().optional(),
     description: z.string().min(5, "Description must be at least 5 characters"),
     handleWithCare: z.boolean(),
-    images: z.array(z.string().url("Each image must be a valid URL")).nonempty("At least one image is required"),
-    status: z.enum(["published", "requested", "in-transit", "delivered", "cancelled", "assigned"]),
+    images: z.array(z.url("Each image must be a valid URL")).optional(),
   }),
 });
 

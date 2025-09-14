@@ -13,6 +13,7 @@ import { CODES } from "./constants/statusCodes";
 import cookieParser from "cookie-parser";
 import connectDb from "./lib/connectDb";
 import locationRouter from "./routes/location/location.router";
+import addressRouter from "./routes/address/address.router";
 
 const PORT = parseInt(env.PORT, 10);
 
@@ -30,6 +31,7 @@ app.use("/api/v1/user", profileRoutes);
 app.use("/api/v1/location", locationRouter);
 app.use("/api/v1/consignment", consignmentRoutes);
 app.use("/api/v1/travel", travelRoutes);
+app.use("/api/v1/address", addressRouter);
 
 app.get("/", (req, res) => {
   res

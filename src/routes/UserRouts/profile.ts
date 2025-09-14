@@ -1,14 +1,16 @@
-
-import expres from "express";
-
-const app=expres()
-
-import{ getProfile, getTravelAndConsignment} from "../../controllers/UserController/profileController.js";
+import { Router } from "express";
+import {
+  getProfile,
+  getTravelAndConsignment,
+} from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
-import { get } from "mongoose";
-app.use(isAuthMiddleware)
+import { addAddress } from "../../controllers/address.controller.js";
 
-app.get("/getprofile",getProfile)
-app.get("/getTravelAndConsignment",getTravelAndConsignment)
-
-export default app;
+const profileRouter = Router();
+profileRouter.get("/getprofile", isAuthMiddleware, getProfile);
+profileRouter.get(
+  "/getTravelAndConsignment",
+  isAuthMiddleware,
+  getTravelAndConsignment
+);
+export default profileRouter;

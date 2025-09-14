@@ -8,6 +8,8 @@ interface Consignment {
     state: string;
     postalCode: string;
     country: string;
+    flatNo: string;
+    landmark: string;
   };
   toAddress: {
     street: string;
@@ -15,6 +17,8 @@ interface Consignment {
     state: string;
     postalCode: string;
     country: string;
+    flatNo: string;
+    landmark?: string;
   };
   toCoordinates: {
     type: "Point";
@@ -24,7 +28,7 @@ interface Consignment {
     type: "Point";
     coordinates: [number, number];
   };
-
+  distance: string;
   weight: number;
   weightUnit: "kg" | "gram" | "lb";
   dimensions: {
@@ -65,6 +69,8 @@ const consignmentSchema = new Schema<Consignment>(
       state: { type: String, required: true },
       postalCode: { type: String, required: true },
       country: { type: String, required: true },
+      flatNo: { type: String, required: true },
+      landmark: { type: String, required: false },
     },
     toAddress: {
       street: { type: String, required: true },
@@ -72,6 +78,8 @@ const consignmentSchema = new Schema<Consignment>(
       state: { type: String, required: true },
       postalCode: { type: String, required: true },
       country: { type: String, required: true },
+      flatNo: { type: String, required: true },
+      landmark: { type: String, required: false },
     },
     toCoordinates: {
       type: {
@@ -94,6 +102,10 @@ const consignmentSchema = new Schema<Consignment>(
         type: [Number],
         required: true,
       },
+    },
+    distance: {
+      type: String,
+      required: true,
     },
     weight: {
       type: Number,
@@ -145,7 +157,8 @@ const consignmentSchema = new Schema<Consignment>(
     },
     images: {
       type: [String],
-      required: true,
+      required: false,
+      default: [],
     },
     status: {
       type: String,

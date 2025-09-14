@@ -22,14 +22,12 @@ export const createTravelSchema = z.object({
   body: z.object({
     fromAddressId: addressIdSchema,
     toAddressId: addressIdSchema,
-    expectedStartDate: z.string().datetime({ offset: true }),
-    expectedEndDate: z.string().datetime({ offset: true }),
+    expectedStartDate: z.iso.datetime({ offset: true }),
+    expectedEndDate: z.iso.datetime({ offset: true }),
     modeOfTravel: z.enum(["air", "roadways", "train"]),
     vehicleType: z.enum(["car", "bus", "other"]).optional(),
     vehicleNumber: z.string().optional(),
     durationOfStay: durationOfStaySchema,
-    durationOfTravel: z.string().min(1, "Duration of travel is required"),
-    status: z.enum(["upcoming", "ongoing", "completed", "cancelled"]),
   }),
 });
 

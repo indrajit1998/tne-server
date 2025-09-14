@@ -26,6 +26,39 @@ interface LocationSearchResult {
   components: AddressComponents;
 }
 
+interface DistanceMatrixResponse {
+  rows: {
+    elements: {
+      distance: { text: string; value: number };
+      duration: { text: string; value: number };
+      status: string;
+    }[];
+  }[];
+  status: string;
+}
+
+interface GeocodeApiResponse {
+  status: string;
+  results: {
+    formatted_address: string;
+    geometry: {
+      location: { lat: number; lng: number };
+      location_type: string;
+      viewport: {
+        northeast: { lat: number; lng: number };
+        southwest: { lat: number; lng: number };
+      };
+    };
+    address_components: {
+      long_name: string;
+      short_name: string;
+      types: string[];
+    }[];
+    place_id: string;
+    types: string[];
+  }[];
+}
+
 const API_KEY = env.GOOGLE_MAPS_API_KEY;
 
 // --- API Response Types ---
@@ -57,9 +90,12 @@ export async function getPlacePredictions(
   const AUTOCOMPLETE_URL = `https://maps.googleapis.com/maps/api/place/autocomplete/json`;
 
   try {
-    const { data } = await axios.get<AutocompleteApiResponse>(AUTOCOMPLETE_URL, {
-      params: { input: query, key: API_KEY, types: "address" },
-    });
+    const { data } = await axios.get<AutocompleteApiResponse>(
+      AUTOCOMPLETE_URL,
+      {
+        params: { input: query, key: API_KEY, types: "address" },
+      }
+    );
     if (data.status !== "OK" || !data.predictions) {
       logger.info(`Autocomplete API Error: ${data.status}`);
       return [];
@@ -124,6 +160,89 @@ export async function getPlaceDetails(
     };
   } catch (error) {
     logger.error(`Details fetch failed: ${error}`);
+    return null;
+  }
+}
+
+export async function getAddressFromCoords(
+  lat: number,
+  lng: number
+): Promise<LocationSearchResult | null> {
+  const GEOCODE_URL = `https://maps.googleapis.com/maps/api/geocode/json`;
+
+  try {
+    const { data } = await axios.get<GeocodeApiResponse>(GEOCODE_URL, {
+      params: { latlng: `${lat},${lng}`, key: API_KEY },
+    });
+
+    if (data.status !== "OK" || !data.results || data.results.length === 0) {
+      logger.error(`Geocode API Error: ${data.status}`);
+      return null;
+    }
+
+    // Take the **first result**
+    const result = data.results[0];
+    if (!result) return null;
+    const components: AddressComponents = {
+      street: "",
+      city: "",
+      state: "",
+      country: "",
+      postalCode: "",
+    };
+
+    for (const comp of result.address_components) {
+      components.street = result.formatted_address;
+      if (comp.types.includes("locality")) components.city = comp.long_name;
+      if (comp.types.includes("administrative_area_level_1"))
+        components.state = comp.long_name;
+      if (comp.types.includes("country")) components.country = comp.long_name;
+      if (comp.types.includes("postal_code"))
+        components.postalCode = comp.long_name;
+    }
+
+    return {
+      formattedAddress: result.formatted_address,
+      coordinates: {
+        lat: result.geometry.location.lat,
+        lng: result.geometry.location.lng,
+      },
+      components,
+    };
+  } catch (error) {
+    logger.error(`Geocode fetch failed: ${error}`);
+    return null;
+  }
+}
+
+export async function getDistance(
+  origin: string,
+  destination: string
+): Promise<{ distance: string } | null> {
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json`;
+  logger.info("Calculating distance between:" + origin + "and" + destination);
+  try {
+    const { data } = await axios.get<DistanceMatrixResponse>(url, {
+      params: {
+        origins: origin,
+        destinations: destination,
+        key: API_KEY,
+        mode: "driving",
+        units: "metric",
+      },
+    });
+
+    if (data.status !== "OK") return null;
+
+    const element = data?.rows[0]?.elements[0];
+
+    if (element?.status !== "OK") return null;
+
+    return {
+      distance: element.distance.text,
+    };
+  } catch (error) {
+    console.error("Distance API error:", error);
     return null;
   }
 }

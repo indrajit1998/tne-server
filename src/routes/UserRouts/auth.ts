@@ -1,16 +1,15 @@
-import express from "express";
-import { generateOtp, registerUser, verifyOtp } from "../../controllers/UserController/userController";
+import { Router } from "express";
+import {
+  generateOtp,
+  registerUser,
+  verifyOtp,
+} from "../../controllers/UserController/userController";
 import isAuthMiddleware from "../../middlewares/authMiddleware";
 
+const authRouter = Router();
 
-const app=express()
+authRouter.post("/generateOtp", generateOtp);
+authRouter.post("/verifyOtp", verifyOtp);
+authRouter.post("/registerUser", isAuthMiddleware, registerUser);
 
-app.post("/generateOtp",generateOtp)
-
-app.get("/verifyOtp",verifyOtp)
-app.use(isAuthMiddleware)
-
-app.post("/registerUser",registerUser)
-
-
-export default app;
+export default authRouter;

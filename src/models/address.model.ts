@@ -7,6 +7,8 @@ interface Address {
   city: string;
   state: string;
   postalCode: string;
+  flatNo: string;
+  landMark?: string;
   country: string;
   location: {
     type: "Point";
@@ -20,6 +22,14 @@ const addressSchema = new Schema<Address>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    flatNo: {
+      type: String,
+      required: true,
+    },
+    landMark: {
+      type: String,
+      required: false,
     },
     label: {
       type: String,

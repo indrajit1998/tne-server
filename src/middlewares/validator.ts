@@ -2,7 +2,10 @@ import { z, ZodObject, ZodError } from "zod";
 import type { Request, Response, NextFunction } from "express";
 
 // Common reusable schemas
-const phoneSchema = z.string().regex(/^[6-9]\d{9}$/, "Invalid Indian phone number");
+const phoneSchema = z
+  .string()
+  .regex(/^\+91[6-9]\d{9}$/, "Invalid Indian phone number");
+
 const emailSchema = z.string().email("Invalid email address");
 
 /**
