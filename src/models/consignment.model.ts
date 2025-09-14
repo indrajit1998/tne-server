@@ -37,6 +37,18 @@ interface Consignment {
     height: number;
     unit: "cm" | "m" | "inches";
   };
+  flightPrice:{
+    senderPay:number;
+    travelerEarn:number;
+  }
+  trainPrice:{
+    senderPay:number;
+    travelerEarn:number;
+  }
+  roadWaysPrice:{
+    senderPay:number;
+    travelerEarn:number;
+  }
   sendingDate: Date;
   receiverName: string;
   receiverPhone: string;
@@ -110,6 +122,18 @@ const consignmentSchema = new Schema<Consignment>(
     weight: {
       type: Number,
       required: true,
+    },
+    flightPrice:{
+      senderPay:{type:Number,required:true},
+      travelerEarn:{type:Number,required:true}
+    },
+    trainPrice:{
+      senderPay:{type:Number,required:true},
+      travelerEarn:{type:Number,required:true}
+    },
+    roadWaysPrice:{
+      senderPay:{type:Number,required:true},
+      travelerEarn:{type:Number,required:true}
     },
     weightUnit: {
       type: String,

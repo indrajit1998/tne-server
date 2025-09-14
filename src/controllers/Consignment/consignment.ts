@@ -9,6 +9,10 @@ import { Address } from "../../models/address.model";
 import logger from "../../lib/logger";
 import { getDistance } from "../../services/maps.service";
 import { calculateVolumetricWeight } from "../../lib/utils";
+import {
+  calculateFlightFare,
+  calculateTrainFare,
+} from "../../lib/pricingLogic";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -78,8 +82,15 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
     );
     const weightInKg = Math.max(weight, volumetricWeight);
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
-    logger.info(`Calculated distance: ${distance} km`);
-    logger.info(`Distance between addresses: ${distance} km`);
+    logger.info(distance)
+    const trainPricing = await calculateTrainFare(
+      weightInKg,
+      distance?.distanceValue || 0
+    );
+    const flightPricing = await calculateFlightFare(
+      weightInKg,
+      distance?.distanceValue || 0
+    );
     const consignment = await ConsignmentModel.create({
       senderId: senderId,
       fromAddress,
@@ -92,6 +103,9 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       dimensions,
       sendingDate,
       receiverName,
+      flightPrice: flightPricing,
+      trainPrice: trainPricing,
+      roadWaysPrice: trainPricing,
       receiverPhone,
       category,
       subCategory,

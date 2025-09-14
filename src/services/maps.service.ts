@@ -218,7 +218,7 @@ export async function getAddressFromCoords(
 export async function getDistance(
   origin: string,
   destination: string
-): Promise<{ distance: string } | null> {
+): Promise<{ distance: string; distanceValue: number } | null> {
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json`;
   logger.info("Calculating distance between:" + origin + "and" + destination);
   try {
@@ -240,6 +240,7 @@ export async function getDistance(
 
     return {
       distance: element.distance.text,
+      distanceValue: element.distance.value / 1000, // in km
     };
   } catch (error) {
     console.error("Distance API error:", error);
