@@ -113,7 +113,7 @@ const consignmentSchema = new Schema<Consignment>(
     },
     weightUnit: {
       type: String,
-      enum: ["kg", "gram", "lb"],
+      enum: ["kg"],
       required: true,
     },
     dimensions: {
@@ -122,7 +122,7 @@ const consignmentSchema = new Schema<Consignment>(
       height: { type: Number, required: true },
       unit: {
         type: String,
-        enum: ["cm", "m", "inches"],
+        enum: ["cm", "inches"],
         required: true,
       },
     },

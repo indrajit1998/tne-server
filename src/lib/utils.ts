@@ -23,4 +23,20 @@ function formatDuration(startDate: string, endDate: string) {
   return parts.join(" ");
 }
 
-export { formatDuration };
+function calculateVolumetricWeight(
+  length: number,
+  width: number,
+  height: number,
+  unit: "cm" | "in" = "cm"
+) {
+  if (unit === "in") {
+    length *= 2.54;
+    width *= 2.54;
+    height *= 2.54;
+  }
+  let volumetricWeight = (length * width * height) / 5000; // in kg
+
+  return volumetricWeight;
+}
+
+export { formatDuration, calculateVolumetricWeight };

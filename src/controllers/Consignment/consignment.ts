@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import { Address } from "../../models/address.model";
 import logger from "../../lib/logger";
 import { getDistance } from "../../services/maps.service";
+import { calculateVolumetricWeight } from "../../lib/utils";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -69,6 +70,13 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       flatNo: toAddressObj.flatNo,
       landmark: toAddressObj.landMark,
     };
+    const volumetricWeight = calculateVolumetricWeight(
+      dimensions.length,
+      dimensions.width,
+      dimensions.height,
+      dimensions.unit || "cm"
+    );
+    const weightInKg = Math.max(weight, volumetricWeight);
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
     logger.info(`Calculated distance: ${distance} km`);
     logger.info(`Distance between addresses: ${distance} km`);
@@ -78,7 +86,7 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       toAddress,
       fromCoordinates: fromAddressObj.location,
       toCoordinates: toAddressObj.location,
-      weight,
+      weight: weightInKg,
       distance: distance?.distance || "N/A",
       weightUnit,
       dimensions,

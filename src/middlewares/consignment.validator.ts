@@ -11,7 +11,7 @@ const dimensionsSchema = z.object({
   length: z.number().positive("Length must be greater than 0"),
   width: z.number().positive("Width must be greater than 0"),
   height: z.number().positive("Height must be greater than 0"),
-  unit: z.enum(["cm", "m", "inches"]),
+  unit: z.enum(["cm","inches"]),
 });
 
 // 🔹 Main schema
@@ -20,7 +20,7 @@ export const createConsignmentSchema = z.object({
     fromAddressId: objectId,
     toAddressId: objectId,
     weight: z.number().positive("Weight must be greater than 0"),
-    weightUnit: z.enum(["kg", "gram", "lb"]),
+    weightUnit: z.enum(["kg"]),
     dimensions: dimensionsSchema,
     sendingDate: z.string().datetime({ offset: true }),
     receiverName: z.string().min(2, "Receiver name is required"),
