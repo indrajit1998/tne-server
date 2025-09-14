@@ -1,47 +1,36 @@
 import { z } from "zod";
+import mongoose from "mongoose";
 
-export const travelSchema = z.object({
-  travelerId: z.string().min(1, "Traveler ID is required"),
+// Helper to validate ObjectId
+const objectId = z
+  .string()
+  .refine((val) => mongoose.Types.ObjectId.isValid(val), {
+    message: "Invalid ObjectId",
+  });
 
-  fromAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string(),
-    postalCode: z.string(),
-    country: z.string(),
-  }),
+// Address ID validation
+const addressIdSchema = objectId;
 
-  toAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string(),
-    postalCode: z.string(),
-    country: z.string(),
-  }),
-
-  fromCoordinates: z.object({
-    type: z.literal("Point"),
-    coordinates: z.tuple([z.number(), z.number()]),
-  }),
-
-  toCoordinates: z.object({
-    type: z.literal("Point"),
-    coordinates: z.tuple([z.number(), z.number()]),
-  }),
-
-  expectedStartDate: z.coerce.date(),
-  expectedEndDate: z.coerce.date(),
-
-  modeOfTravel: z.enum(["air", "roadways", "train"]),
-  vehicleType: z.enum(["car", "bus", "other"]).optional(),
-  vehicleNumber: z.string().optional(),
-
-  durationOfStay: z.object({
-    days: z.number().nonnegative(),
-    hours: z.number().nonnegative(),
-  }),
-
-  durationOfTravel: z.string(),
-  status: z.enum(["upcoming", "ongoing", "completed", "cancelled"]),
+// DurationOfStay validation
+const durationOfStaySchema = z.object({
+  days: z.number().min(0, "Days must be >= 0"),
+  hours: z.number().min(0, "Hours must be >= 0").max(23, "Hours must be <= 23"),
 });
-export const createTravelSchema = travelSchema;
+
+// Main Travel validator
+export const createTravelSchema = z.object({
+  body: z.object({
+    fromAddressId: addressIdSchema,
+    toAddressId: addressIdSchema,
+    expectedStartDate: z.string().datetime({ offset: true }),
+    expectedEndDate: z.string().datetime({ offset: true }),
+    modeOfTravel: z.enum(["air", "roadways", "train"]),
+    vehicleType: z.enum(["car", "bus", "other"]).optional(),
+    vehicleNumber: z.string().optional(),
+    durationOfStay: durationOfStaySchema,
+    durationOfTravel: z.string().min(1, "Duration of travel is required"),
+    status: z.enum(["upcoming", "ongoing", "completed", "cancelled"]),
+  }),
+});
+
+export type CreateTravelInput = z.infer<typeof createTravelSchema>["body"];
