@@ -6,6 +6,8 @@ import requestLogger from "./middlewares/requestLogger";
 import errorHandler from "./middlewares/errorHandler";
 import sendResponse from "./lib/ApiResponse";
 import authRoutes from "./routes/UserRouts/auth";
+import consignmentRoutes from "./routes/Consignment/consignment";
+import travelRoutes from "./routes/UserRouts/travel";
 import profileRoutes from "./routes/UserRouts/profile";
 import { CODES } from "./constants/statusCodes";
 import cookieParser from "cookie-parser";
@@ -26,6 +28,8 @@ app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", profileRoutes);
 app.use("/api/v1/location", locationRouter);
+app.use("/api/v1/consignment", consignmentRoutes);
+app.use("/api/v1/travel", travelRoutes);
 
 app.get("/", (req, res) => {
   res
