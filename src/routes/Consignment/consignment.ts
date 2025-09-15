@@ -1,9 +1,13 @@
 import { Router } from "express";
 import {
+  acceptCarryRequest,
+  carryRequestBySender,
+  carryRequestByTraveller,
   createConsignment,
   getConsignments,
   locateConsignment,
   locateConsignmentById,
+  rejectCarryRequest,
 } from "../../controllers/Consignment/consignment";
 import isAuthMiddleware from "../../middlewares/authMiddleware";
 import { validate } from "../../middlewares/validator";
@@ -28,5 +32,12 @@ consignmentRouter.get(
   isAuthMiddleware,
   locateConsignmentById
 );
+
+consignmentRouter.post("/carryRequestBySender",isAuthMiddleware,carryRequestBySender);
+consignmentRouter.post("/carryRequestByTraveller",isAuthMiddleware,carryRequestByTraveller);
+consignmentRouter.patch("/acceptCarryRequest",isAuthMiddleware,acceptCarryRequest);
+consignmentRouter.patch("/rejectCarryRequest",isAuthMiddleware,rejectCarryRequest);
+
+
 
 export default consignmentRouter;

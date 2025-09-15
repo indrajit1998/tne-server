@@ -8,8 +8,6 @@ interface CarryRequest {
 
   senderPayAmount: number;     // total the sender has to pay
   travellerEarning: number;    // what traveller will earn
-  platformCommission: number;  // difference (or fixed %) kept by platform
-
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,7 +29,6 @@ const carryRequestSchema = new Schema<CarryRequest>(
     },
     senderPayAmount: { type: Number, required: true },
     travellerEarning: { type: Number, required: true },
-    platformCommission: { type: Number, required: true },
   },
   { timestamps: true }
 );

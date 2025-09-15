@@ -6,6 +6,7 @@ interface Notification {
   message: string;
   isRead: boolean;
   relatedConsignmentId?: Types.ObjectId;
+  requestId?: Types.ObjectId;
   relatedTravelId?: Types.ObjectId;
   relatedPaymentId?: Types.ObjectId;
   createdAt: Date;
@@ -19,6 +20,7 @@ const notificationSchema = new Schema<Notification>(
     message: { type: String, required: true },
     isRead: { type: Boolean, default: false },
     relatedConsignmentId: { type: Schema.Types.ObjectId, ref: "Consignments" },
+    requestId:{type:Schema.Types.ObjectId,ref:"CarryRequests"},
     relatedTravelId: { type: Schema.Types.ObjectId, ref: "Travels" },
     relatedPaymentId: { type: Schema.Types.ObjectId, ref: "Payments" },
   },

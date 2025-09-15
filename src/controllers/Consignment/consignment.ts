@@ -13,6 +13,11 @@ import {
   calculateFlightFare,
   calculateTrainFare,
 } from "../../lib/pricingLogic";
+import TravelConsignments from "../../models/travelconsignments.model";
+import { CarryRequest } from "../../models/carryRequest.model";
+import Notification from "../../models/notification.model";
+import { TravelModel } from "../../models/travel.model";
+import { notificationHelper } from "../../constants/constant";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -195,3 +200,183 @@ export const locateConsignmentById = async (
     });
   }
 };
+
+export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
+  try {
+    const {consignmentId,travelId}= req.body;
+     if( !consignmentId || !travelId){
+      return res.status(400).json({message:"All fields are required"})
+    }
+    const consignment=await ConsignmentModel.findById(consignmentId);
+     
+    if(!consignment){
+      return res.status(404).json({message:"No consignment found"})
+    }
+    const consignmentSender = consignment?.senderId;
+  
+    const travellerId=await TravelModel.findById(travelId).select("travelerId");
+    if(!travellerId){
+      return res.status(404).json({message:"No travel found"})
+    }
+    const travellerEarning =
+  (consignment.trainPrice?.travelerEarn || 0) +
+  (consignment.flightPrice?.travelerEarn || 0) +
+  (consignment.roadWaysPrice?.travelerEarn || 0);
+
+const senderPayAmount =
+  (consignment.trainPrice?.senderPay || 0) +
+  (consignment.flightPrice?.senderPay || 0) +
+  (consignment.roadWaysPrice?.senderPay || 0);
+  const existingRequest=await CarryRequest.findOne({
+    consignmentId:consignmentId,
+    travellerId:travellerId.travelerId,
+    requestedBy:consignmentSender,
+    status:"pending"
+  });
+  if(existingRequest){
+    return res.status(400).json({message:"You have already sent a carry request for this consignment and travel"})
+  }
+    const carryRequestBySender=await CarryRequest.create({
+      consignmentId:consignmentId,
+      travellerId:travellerId.travelerId,
+      requestedBy:consignmentSender,
+      status:"pending",
+      senderPayAmount:senderPayAmount,
+      travellerEarning:travellerEarning
+    });
+    if(!carryRequestBySender){
+      return res.status(500).json({message:"Error in creating carry request"})
+    }
+    const notificationData = notificationHelper("bySender", {description:consignment.description}, consignmentSender);
+    if (!notificationData) {
+      return res.status(500).json({ message: "Failed to generate notification data" });
+    }
+    const { title, message } = notificationData;
+    const notification = await Notification.create({
+      userId: travellerId.travelerId,
+      title,
+      message,
+      isRead: false,
+      relatedConsignmentId: consignment._id,
+      requestId: carryRequestBySender._id,
+      relatedTravelId: travelId,
+    })
+    if(!notification){
+      return res.status(500).json({message:"Error in creating notification"})
+    }
+    return res.status(201).json({message:"Carry request sent successfully",carryRequestBySender
+    })
+  } catch (error) {
+    console.error("❌ Error in carry request by sender:", error);
+    return res.status(500).json({ message: "Internal server error" }); 
+  }
+}
+export const carryRequestByTraveller = async (req: AuthRequest, res: Response) => {
+  try {
+    const {consignmentId,travelId}= req.body;
+    const travellerId = req.user;
+    const travel=await TravelModel.findById(travelId);
+    if(!travel){
+      return res.status(404).json({message:"No travel found"})
+    }
+    if(travel.travelerId.toString()!==travellerId){
+      return res.status(403).json({message:"You are not authorized to send carry request for this travel"})
+    }
+    const consignment=await ConsignmentModel.findById(consignmentId);
+    if(!travellerId || !consignmentId || !travelId){
+      return res.status(400).json({message:"All fields are required"})
+    }
+    if(!consignment){
+      return res.status(404).json({message:"No consignment found"})
+    }
+    const consignmentSenderId=consignment?.senderId;
+   const travellerEarning =
+  (consignment.trainPrice?.travelerEarn || 0) +
+  (consignment.flightPrice?.travelerEarn || 0) +
+  (consignment.roadWaysPrice?.travelerEarn || 0);
+
+const senderPayAmount =
+  (consignment.trainPrice?.senderPay || 0) +
+  (consignment.flightPrice?.senderPay || 0) +
+  (consignment.roadWaysPrice?.senderPay || 0);
+  const existingRequest=await CarryRequest.findOne({
+    consignmentId:consignmentId,
+    travellerId:travellerId,
+    requestedBy:travellerId,
+    status:"pending"
+  });
+  if(existingRequest){
+    return res.status(400).json({message:"You have already sent a carry request for this consignment and travel"})
+  }
+  const carryRequestByTraveller=await CarryRequest.create({
+      consignmentId:consignmentId,
+      travellerId:travellerId,
+      requestedBy:travellerId,
+      status:"pending",
+      senderPayAmount:senderPayAmount,
+      travellerEarning:travellerEarning
+    });
+    if(!carryRequestByTraveller){
+      return res.status(500).json({message:"Error in creating carry request"})
+    }
+    const notificationData = notificationHelper("byTraveller", { description: consignment.description }, travel.travelerId);
+    if (!notificationData) {
+      return res.status(500).json({ message: "Failed to generate notification data" });
+    }
+    const { title, message } = notificationData;
+    const notification = await Notification.create({
+      userId: consignmentSenderId,
+      title,
+      message,
+      isRead: false,
+      relatedConsignmentId: consignment._id,
+      requestId: carryRequestByTraveller._id,
+      relatedTravelId: travelId,
+    });
+    return res.status(201).json({
+      message: "Carry request sent successfully",
+      carryRequestByTraveller
+    });
+
+  } catch (error) {
+    console.error("❌ Error in carry request by traveller:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
+  try {
+    const {carryRequestId}=req.body;
+    if(!carryRequestId){
+      return res.status(400).json({message:"carryRequestId is required"})
+    }
+    const carryRequest=await CarryRequest.findById(carryRequestId);
+    if(!carryRequest){
+      return res.status(404).json({message:"No carry request found"})
+    }
+    carryRequest.status="accepted";
+    await carryRequest.save();
+    return res.status(200).json({message:"Carry request accepted successfully", carryRequest})
+  } catch (error) {
+    console.error("❌ Error in accepting carry request:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
+  try {
+    const {carryRequestId}=req.body;
+    if(!carryRequestId){
+      return res.status(400).json({message:"carryRequestId is required"})
+    }
+    const carryRequest=await CarryRequest
+.findById(carryRequestId);
+    if(!carryRequest){
+      return res.status(404).json({message:"No carry request found"})
+    }
+    carryRequest.status="rejected";
+    await carryRequest.save();
+    return res.status(200).json({message:"Carry request rejected successfully", carryRequest})
+  } catch (error) {
+    console.error("❌ Error in rejecting carry request:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
