@@ -456,6 +456,10 @@ export const updateTravelConsignmentStatus = async (req: AuthRequest, res: Respo
     if(!travelConsignment){
       return res.status(404).json({message:"No travel consignment found"})
     }
+    const consignment = await ConsignmentModel.findById(travelConsignment.consignmentId);
+    if (!consignment) {
+      return res.status(404).json({ message: "No consignment found" });
+    }
     if (newStatus === "in_transit") {
       if (travelConsignment.status !== "to_handover") {
         return res.status(400).json({ message: "Invalid status transition" });
@@ -465,6 +469,8 @@ export const updateTravelConsignmentStatus = async (req: AuthRequest, res: Respo
         return res.status(400).json({ message: "Invalid OTP" });
       }
       travelConsignment.status = "in_transit";
+      consignment.status = "in-transit";
+      await consignment.save();
       travelConsignment.pickupTime = new Date();
       await travelConsignment.save();
       return res.status(200).json({ message: "Status updated to in_transit", travelConsignment });
@@ -478,6 +484,8 @@ export const updateTravelConsignmentStatus = async (req: AuthRequest, res: Respo
         return res.status(400).json({ message: "Invalid OTP" });
       }
       travelConsignment.status = "delivered"; 
+      consignment.status = "delivered";
+      await consignment.save();
       travelConsignment.deliveryTime = new Date();
       await travelConsignment.save();
       return res.status(200).json({ message: "Status updated to delivered", travelConsignment });
