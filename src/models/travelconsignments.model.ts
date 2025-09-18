@@ -11,6 +11,8 @@ interface TravelConsignments {
   platformCommission: number;
   createdAt: Date;
   updatedAt: Date;
+  pickupTime?: Date;
+  deliveryTime?: Date;
 }
 
 const travelConsignmentsSchema = new Schema<TravelConsignments>(
@@ -32,6 +34,8 @@ const travelConsignmentsSchema = new Schema<TravelConsignments>(
     travellerEarning: { type: Number, required: true },
     senderToPay: { type: Number, required: true },
     platformCommission: { type: Number, required: true },
+    pickupTime: { type: Date },
+    deliveryTime: { type: Date },
   },
   { timestamps: true }
 );

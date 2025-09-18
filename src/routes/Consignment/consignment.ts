@@ -8,6 +8,7 @@ import {
   locateConsignment,
   locateConsignmentById,
   rejectCarryRequest,
+  updateTravelConsignmentStatus,
 } from "../../controllers/Consignment/consignment";
 import isAuthMiddleware from "../../middlewares/authMiddleware";
 import { validate } from "../../middlewares/validator";
@@ -36,7 +37,8 @@ consignmentRouter.get(
 consignmentRouter.post("/carryRequestBySender",isAuthMiddleware,carryRequestBySender);
 consignmentRouter.post("/carryRequestByTraveller",isAuthMiddleware,carryRequestByTraveller);
 consignmentRouter.patch("/acceptCarryRequest",isAuthMiddleware,acceptCarryRequest);
-consignmentRouter.patch("/rejectCarryRequest",isAuthMiddleware,rejectCarryRequest);
+consignmentRouter.patch("/rejectCarryRequest", isAuthMiddleware, rejectCarryRequest);
+consignmentRouter.patch("/updateTravelConsignmentStatus/:travelConsignmentId", isAuthMiddleware, updateTravelConsignmentStatus);
 
 
 
