@@ -89,8 +89,15 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       dimensions.unit || "cm"
     );
     const weightInKg = Math.max(weight, volumetricWeight);
+    console.log("Weight in Kg:", weightInKg);
+    if (weightInKg <= 0) {
+      return res.status(400).json({ message: "Invalid weight" });
+    }
+    console.log("Calculating distance between cities");
+    console.log("From City:", fromAddressObj.city);
+    console.log("To City:", toAddressObj.city);
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
-    logger.info(distance)
+    console.log("Distance:", distance);
     const trainPricing = await calculateTrainFare(
       weightInKg,
       distance?.distanceValue || 0
@@ -99,6 +106,7 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       weightInKg,
       distance?.distanceValue || 0
     );
+    console.log("Flight Pricing:", flightPricing);
     const consignment = await ConsignmentModel.create({
       senderId: senderId,
       fromAddress,
@@ -215,18 +223,22 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
     if(!consignment){
       return res.status(404).json({message:"No consignment found"})
     }
+    console.log("Consignment:", consignment);
     const consignmentSender = consignment?.senderId;
   
-    const travel=await TravelModel.findById(travelId)
+    const travel = await TravelModel.findById(travelId)
+    
     if(!travel){
       return res.status(404).json({message:"No travel found"})
     }
+    if (travel.fromAddress.state !== consignment.fromAddress.state || travel.toAddress.state !== consignment.toAddress.state) {
+      return res.status(400).json({ message: "Travel route does not match consignment route" });
+    }
     const modelOfTravel = travel.modeOfTravel;
-    const travellerEarning=calculateTravellerEarning(modelOfTravel,consignment);
-    const senderPay=calculateSenderPay(modelOfTravel,consignment);
+    console.log("Model of Travel:", modelOfTravel);
+    const travellerEarning = calculateTravellerEarning(modelOfTravel, consignment);
     
-  
-
+    const senderPay=calculateSenderPay(modelOfTravel,consignment);
   const existingRequest=await CarryRequest.findOne({
     consignmentId:consignmentId,
     travellerId:travel.travelerId,
