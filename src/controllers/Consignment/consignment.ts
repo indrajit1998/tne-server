@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 
-import { Types } from "mongoose";
+import { model, Types } from "mongoose";
 import ConsignmentModel from "../../models/consignment.model";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
 
@@ -8,7 +8,7 @@ import mongoose from "mongoose";
 import { Address } from "../../models/address.model";
 import logger from "../../lib/logger";
 import { getDistance } from "../../services/maps.service";
-import { calculateVolumetricWeight } from "../../lib/utils";
+import { calculateSenderPay, calculateTravellerEarning, calculateVolumetricWeight, generateOtp } from "../../lib/utils";
 import {
   calculateFlightFare,
   calculateTrainFare,
@@ -18,6 +18,9 @@ import { CarryRequest } from "../../models/carryRequest.model";
 import Notification from "../../models/notification.model";
 import { TravelModel } from "../../models/travel.model";
 import { notificationHelper } from "../../constants/constant";
+import { User } from "../../models/user.model";
+import { createRazorpayContactId } from "../../services/razorpay.service";
+import Payment from "../../models/payment.model";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -214,22 +217,19 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
     }
     const consignmentSender = consignment?.senderId;
   
-    const travellerId=await TravelModel.findById(travelId).select("travelerId");
-    if(!travellerId){
+    const travel=await TravelModel.findById(travelId)
+    if(!travel){
       return res.status(404).json({message:"No travel found"})
     }
-    const travellerEarning =
-  (consignment.trainPrice?.travelerEarn || 0) +
-  (consignment.flightPrice?.travelerEarn || 0) +
-  (consignment.roadWaysPrice?.travelerEarn || 0);
+    const modelOfTravel = travel.modeOfTravel;
+    const travellerEarning=calculateTravellerEarning(modelOfTravel,consignment);
+    const senderPay=calculateSenderPay(modelOfTravel,consignment);
+    
+  
 
-const senderPayAmount =
-  (consignment.trainPrice?.senderPay || 0) +
-  (consignment.flightPrice?.senderPay || 0) +
-  (consignment.roadWaysPrice?.senderPay || 0);
   const existingRequest=await CarryRequest.findOne({
     consignmentId:consignmentId,
-    travellerId:travellerId.travelerId,
+    travellerId:travel.travelerId,
     requestedBy:consignmentSender,
     status:"pending"
   });
@@ -238,10 +238,10 @@ const senderPayAmount =
   }
     const carryRequestBySender=await CarryRequest.create({
       consignmentId:consignmentId,
-      travellerId:travellerId.travelerId,
+      travellerId:travel.travelerId,
       requestedBy:consignmentSender,
       status:"pending",
-      senderPayAmount:senderPayAmount,
+      senderPayAmount:senderPay,
       travellerEarning:travellerEarning
     });
     if(!carryRequestBySender){
@@ -253,7 +253,7 @@ const senderPayAmount =
     }
     const { title, message } = notificationData;
     const notification = await Notification.create({
-      userId: travellerId.travelerId,
+      userId: travel.travelerId,
       title,
       message,
       isRead: false,
@@ -275,6 +275,9 @@ export const carryRequestByTraveller = async (req: AuthRequest, res: Response) =
   try {
     const {consignmentId,travelId}= req.body;
     const travellerId = req.user;
+    if(!travellerId || !consignmentId || !travelId){
+      return res.status(400).json({message:"All fields are required"})
+    }
     const travel=await TravelModel.findById(travelId);
     if(!travel){
       return res.status(404).json({message:"No travel found"})
@@ -283,22 +286,12 @@ export const carryRequestByTraveller = async (req: AuthRequest, res: Response) =
       return res.status(403).json({message:"You are not authorized to send carry request for this travel"})
     }
     const consignment=await ConsignmentModel.findById(consignmentId);
-    if(!travellerId || !consignmentId || !travelId){
-      return res.status(400).json({message:"All fields are required"})
-    }
     if(!consignment){
       return res.status(404).json({message:"No consignment found"})
     }
     const consignmentSenderId=consignment?.senderId;
-   const travellerEarning =
-  (consignment.trainPrice?.travelerEarn || 0) +
-  (consignment.flightPrice?.travelerEarn || 0) +
-  (consignment.roadWaysPrice?.travelerEarn || 0);
-
-const senderPayAmount =
-  (consignment.trainPrice?.senderPay || 0) +
-  (consignment.flightPrice?.senderPay || 0) +
-  (consignment.roadWaysPrice?.senderPay || 0);
+    const travellerEarning=calculateTravellerEarning(travel.modeOfTravel,consignment);
+    const senderPay=calculateSenderPay(travel.modeOfTravel,consignment);
   const existingRequest=await CarryRequest.findOne({
     consignmentId:consignmentId,
     travellerId:travellerId,
@@ -313,7 +306,7 @@ const senderPayAmount =
       travellerId:travellerId,
       requestedBy:travellerId,
       status:"pending",
-      senderPayAmount:senderPayAmount,
+      senderPayAmount:senderPay,
       travellerEarning:travellerEarning
     });
     if(!carryRequestByTraveller){
@@ -333,6 +326,10 @@ const senderPayAmount =
       requestId: carryRequestByTraveller._id,
       relatedTravelId: travelId,
     });
+    console.log(notification)
+    if(!notification){
+      return res.status(500).json({message:"Error in creating notification"})
+    }
     return res.status(201).json({
       message: "Carry request sent successfully",
       carryRequestByTraveller
@@ -353,8 +350,78 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
     if(!carryRequest){
       return res.status(404).json({message:"No carry request found"})
     }
+    const consignment=await ConsignmentModel.findById(carryRequest.consignmentId);
+    if(!consignment){
+      return res.status(404).json({message:"No consignment found"})
+    }
+    const receiverPhone=consignment.receiverPhone;
+    const sender= await User.findById(consignment.senderId)
+    if(!sender){
+      return res.status(404).json({message:"No sender found"})
+    }
+    const senderPhone=sender.phoneNumber;
+    const senderName=sender.firstName;
+    const senderEmail=sender.email;
+
+   const [otpForSender, otpForReceiver] = await Promise.all([
+  generateOtp(senderPhone || ""),
+  generateOtp(receiverPhone || "")
+]);
+
+console.log("Receiver OTP:", otpForReceiver.otp);
+console.log("Sender OTP:", otpForSender.otp);
+ 
     carryRequest.status="accepted";
     await carryRequest.save();
+    if(!carryRequest){
+      return res.status(500).json({message:"Error in accepting carry request"})
+    }
+    const travelconsignments=await TravelConsignments.create({
+      travelId:carryRequest.travellerId,
+      consignmentId:carryRequest.consignmentId,
+      senderOTP:otpForSender.otp,
+      receiverOTP:otpForReceiver.otp,
+      status:"to_handover",
+      travellerEarning:carryRequest.travellerEarning,
+      senderToPay:carryRequest.senderPayAmount,
+      platformCommission:carryRequest.senderPayAmount - carryRequest.travellerEarning
+    })
+    if(!travelconsignments){
+      return res.status(500).json({message:"Error in creating travel consignment"})
+    }
+    if(!senderName || !senderEmail || !senderPhone){
+      return res.status(400).json({message:"Sender details are incomplete"})
+    }
+    const paymentInitation =await createRazorpayContactId(senderName,senderEmail,senderPhone)
+    if(!paymentInitation){
+      return res.status(500).json({message:"Error in initiating payment"})
+    }
+    const paymentModelInitalization =await Payment.create({
+      userId:carryRequest.requestedBy,
+      consignmentId:carryRequest.consignmentId,
+      travelId:carryRequest.travellerId,
+      type:"sender_pay",
+      amount:carryRequest.senderPayAmount,
+      status:"pending",
+      razorpayPaymentId:paymentInitation
+
+    })
+    if(!paymentModelInitalization){
+      return res.status(500).json({message:"Error in creating payment model"})
+    }
+      const notificationData = Notification.create({
+        userId: sender._id,
+        title: "Carry Request Accepted",
+        message: `Your carry request for consignment ${consignment.description} has been accepted. please proceed to payment.`,
+        isRead: false,
+        relatedConsignmentId: consignment._id,
+        requestId: carryRequest._id,
+        relatedTravelId: carryRequest.travellerId,
+      })
+      if(!notificationData){
+        return res.status(500).json({message:"Error in creating notification"})
+      }
+      console.log(notificationData)
     return res.status(200).json({message:"Carry request accepted successfully", carryRequest})
   } catch (error) {
     console.error("❌ Error in accepting carry request:", error);
