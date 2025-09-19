@@ -50,7 +50,7 @@ function calculateTravellerEarning(modelOfTravel:string,consignment:any){
       earning=consignment.flightPrice.travelerEarn;
       break;
     case "roadways":
-      earning=consignment.roadwaysPrice.travelerEarn;
+      earning=consignment.roadWaysPrice.travelerEarn;
       break;
     case "train":
       earning=consignment.trainPrice.travelerEarn;
@@ -66,7 +66,7 @@ function calculateSenderPay(modelOfTravel:string,consignment:any){
       pay=consignment.flightPrice.senderPay;
       break;
     case "roadways":
-      pay=consignment.roadwaysPrice.senderPay;
+      pay=consignment.roadWaysPrice.senderPay;
       break;
     case "train":
       pay=consignment.trainPrice.senderPay;

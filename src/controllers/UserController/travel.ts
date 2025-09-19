@@ -109,7 +109,7 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       "fromAddress.state": fromstate,
       "toAddress.state": tostate,
       status: "upcoming",
-      travelerId: { $ne: currentUserId },
+      travelerId:currentUserId,
     });
     if (!travels || travels.length === 0) {
       return res.status(404).json({ message: "No travels found", travels: [] });

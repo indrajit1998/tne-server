@@ -2,6 +2,7 @@ import FareConfigModel from "../models/fareconfig.model";
 
 export async function calculateTrainFare(weight: number, distance: number) {
   const config = await FareConfigModel.findOne();
+  console.log("Fare Config:", config);
   if (!config) {
     throw new Error("Fare configuration not found");
   }
@@ -10,6 +11,7 @@ export async function calculateTrainFare(weight: number, distance: number) {
   }
 
   let fare = config.baseFareTrain;
+  console.log("Base Fare:", fare);
 
   if (weight > 1) {
     fare += Math.ceil(weight - 1) * config.weightRateTrain;
