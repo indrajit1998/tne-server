@@ -39,7 +39,16 @@ export const generateOtp = async (req: Request, res: Response) => {
     // ✅ Ensure user exists
     let user = await User.findOne({ phoneNumber: validPhone });
     if (!user) {
-      user = await User.create({ phoneNumber: validPhone });
+      try {
+        user = await User.create({ phoneNumber: validPhone });
+      } catch (error) {
+        console.error("❌ Error creating user:", error);
+        return res
+          .status(CODES.INTERNAL_SERVER_ERROR)
+          .json(
+            sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong while creating user")
+          );
+      }
     }
 
     // ✅ Save/Update OTP in Verification collection
@@ -49,11 +58,20 @@ export const generateOtp = async (req: Request, res: Response) => {
       verification.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
       await verification.save();
     } else {
-      verification = await Verification.create({
+     try {
+       verification = await Verification.create({
         phoneNumber: validPhone,
         code: parseInt(otp, 10),
         expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       });
+     } catch (error) {
+      console.error("❌ Error creating verification:", error);
+      return res
+        .status(CODES.INTERNAL_SERVER_ERROR)
+        .json(
+          sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong while creating verification")
+        );
+     }
     }
 
     // ✅ Send SMS using Pingbix
