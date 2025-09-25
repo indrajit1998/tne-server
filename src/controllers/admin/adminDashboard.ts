@@ -2,6 +2,7 @@ import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
 import ConsignmentModel from "../../models/consignment.model";
 import Earning from "../../models/earning.model";
+import { FeedbackOrContactModel } from "../../models/feedbackOrContact";
 import { TravelModel } from "../../models/travel.model";
 import { User } from "../../models/user.model";
 import type { Response } from "express";
@@ -171,3 +172,14 @@ export const consignmentStats = async (req: AdminAuthRequest, res: Response) => 
     }
 }
 
+export const getFeedbackOrContact = async (req: AdminAuthRequest, res: Response) => { 
+    try {
+        const results = await FeedbackOrContactModel.find({}).populate("userId", "firstName email").lean();
+        const feedbacks = results.filter(r => r.Subject === "I want to give feedback");
+        
+        const contacts = results.filter(r => r.Subject === "I want to contact support");
+        return res.status(200).json({ totalRequests: results.length, feedbacks: feedbacks.length, contacts: contacts.length, results });
+    } catch (error) {
+        
+    }
+}

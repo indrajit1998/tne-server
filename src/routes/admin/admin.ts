@@ -12,3 +12,5 @@ adminRouts.get("/getConsignmentsStats", consignmentStats)
 adminRouts.get("/getEarningsStats", getEarningsStats)
 adminRouts.get("/getTravelStats", travelStats)
 adminRouts.get("/getRequestStats", requestStats)
+
+export default adminRouts;
