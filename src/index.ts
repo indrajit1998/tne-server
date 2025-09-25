@@ -1,19 +1,21 @@
-import express from "express";
+import cookieParser from "cookie-parser";
 import cors from "cors";
+import express from "express";
+import { CODES } from "./constants/statusCodes";
+import sendResponse from "./lib/ApiResponse";
+import connectDb from "./lib/connectDb";
 import env from "./lib/env";
 import logger from "./lib/logger";
-import requestLogger from "./middlewares/requestLogger";
 import errorHandler from "./middlewares/errorHandler";
-import sendResponse from "./lib/ApiResponse";
-import authRoutes from "./routes/UserRouts/auth";
-import consignmentRoutes from "./routes/Consignment/consignment";
-import travelRoutes from "./routes/UserRouts/travel";
-import profileRoutes from "./routes/UserRouts/profile";
-import { CODES } from "./constants/statusCodes";
-import cookieParser from "cookie-parser";
-import connectDb from "./lib/connectDb";
-import locationRouter from "./routes/location/location.router";
+import requestLogger from "./middlewares/requestLogger";
 import addressRouter from "./routes/address/address.router";
+import adminRouts from "./routes/admin/admin";
+import consignmentRoutes from "./routes/Consignment/consignment";
+import feedbackOrContactRoute from "./routes/feedbackOrContact/feedbackOrContact.route";
+import locationRouter from "./routes/location/location.router";
+import authRoutes from "./routes/UserRouts/auth";
+import profileRoutes from "./routes/UserRouts/profile";
+import travelRoutes from "./routes/UserRouts/travel";
 
 const PORT = parseInt(env.PORT, 10);
 
@@ -32,6 +34,8 @@ app.use("/api/v1/location", locationRouter);
 app.use("/api/v1/consignment", consignmentRoutes);
 app.use("/api/v1/travel", travelRoutes);
 app.use("/api/v1/address", addressRouter);
+app.use("/api/v1/admin", adminRouts);
+app.use("./api/v1/feedback",feedbackOrContactRoute)
 
 app.get("/", (req, res) => {
   res

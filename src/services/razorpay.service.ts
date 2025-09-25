@@ -155,3 +155,41 @@ export async function createVpaFundAccount(
     );
   }
 }
+export async function createPayout(
+  fundAccountId: string,
+  amount: number,
+  currency = "INR",
+  mode: "IMPS" | "NEFT" | "UPI" = "IMPS"
+): Promise<string> {
+  try {
+    const response = await axios.post(
+      "https://api.razorpay.com/v1/payouts",
+      {
+        account_number: env.RAZORPAY_ACCOUNT_NUMBER, // RazorpayX account number
+        fund_account_id: fundAccountId,
+        amount: amount * 100, // paise
+        currency,
+        mode,
+        purpose: "payout",
+        queue_if_low_balance: true,
+      },
+      {
+        auth: {
+          username: RAZORPAY_KEY_ID,
+          password: RAZORPAY_KEY_SECRET,
+        },
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    return response.data.id; // payout id
+  } catch (error: any) {
+    logger.error(
+      `Error creating payout: ${error.response?.data || error.message}`
+    );
+    throw new Error(
+      error.response?.data?.error?.description || "Failed to create payout"
+    );
+  }
+}
+

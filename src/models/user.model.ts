@@ -10,6 +10,7 @@ interface User {
   isVerified: boolean;
   razorpayCustomerId?: string;
   profilePictureUrl?: string;
+  isAdmin: boolean;
 }
 
 const UserSchema = new Schema<User>(
@@ -22,6 +23,7 @@ const UserSchema = new Schema<User>(
     profilePictureUrl: { type: String, required: false },
     isVerified: { type: Boolean, default: false },
     razorpayCustomerId: { type: String, required: false },
+    isAdmin: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

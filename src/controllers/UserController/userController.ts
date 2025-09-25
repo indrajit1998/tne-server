@@ -1,15 +1,15 @@
-import type { Request, Response } from "express";
-import { CODES } from "../../constants/statusCodes";
-import { emailSchema, phoneSchema } from "../../middlewares/validator";
-import sendResponse from "../../lib/ApiResponse";
-import { Verification } from "../../models/verfiication.model";
-import { User } from "../../models/user.model";
 import axios from "axios";
+import type { Request, Response } from "express";
 import FormData from "form-data";
-import env from "../../lib/env";
 import jwt from "jsonwebtoken";
-import type { AuthRequest } from "../../middlewares/authMiddleware.js";
 import { cookiesOption } from "../../constants/constant";
+import { CODES } from "../../constants/statusCodes";
+import sendResponse from "../../lib/ApiResponse";
+import env from "../../lib/env";
+import type { AuthRequest } from "../../middlewares/authMiddleware.js";
+import { emailSchema, phoneSchema } from "../../middlewares/validator";
+import { User } from "../../models/user.model";
+import { Verification } from "../../models/verfiication.model";
 
 const generateRandomOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit
@@ -267,6 +267,7 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
           sendResponse(CODES.BAD_REQUEST, null, "Onboarding already completed")
         );
     }
+   
 
     // ✅ Update user profile
     const onboardedUser = await User.findByIdAndUpdate(

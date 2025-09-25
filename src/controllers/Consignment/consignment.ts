@@ -26,6 +26,7 @@ import { notificationHelper } from "../../constants/constant";
 import { User } from "../../models/user.model";
 import { createRazorpayContactId } from "../../services/razorpay.service";
 import Payment from "../../models/payment.model";
+import Earning from "../../models/earning.model";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -566,9 +567,22 @@ export const updateTravelConsignmentStatus = async (
       await consignment.save();
       travelConsignment.pickupTime = new Date();
       await travelConsignment.save();
+      const earning = Earning.create({
+        userId: travelConsignment.travelId,
+        travelId: travelConsignment.travelId,
+        consignmentId: travelConsignment.consignmentId,
+        amount: travelConsignment.travellerEarning,
+        status: "pending",
+        is_withdrawn: false,
+      })
+      if (!earning) {
+        return res.status(500).json({ message: "Error in creating earning record" });
+      }
+     
+
       return res
         .status(200)
-        .json({ message: "Status updated to in_transit", travelConsignment });
+        .json({ message: "Status updated to in_transit and earning record created", travelConsignment, earning });
     } else if (newStatus === "delivered") {
       if (travelConsignment.status !== "in_transit") {
         return res.status(400).json({ message: "Invalid status transition" });
