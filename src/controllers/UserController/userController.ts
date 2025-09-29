@@ -197,7 +197,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
     return res
       .status(CODES.OK)
-      .json(sendResponse(CODES.OK, null, "Phone number verified successfully"));
+      .json(sendResponse(CODES.OK, user.onboardingCompleted, "Phone number verified successfully"));
   } catch (error) {
     console.error("Error verifying OTP:", error);
     return res
