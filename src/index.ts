@@ -52,5 +52,6 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`);
-});
+  logger.info(`Server is running at http://localhost:${PORT}`);
+}
+);
