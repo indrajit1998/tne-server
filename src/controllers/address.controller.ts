@@ -13,6 +13,7 @@ export const addAddress = async (req: AuthRequest, res: Response) => {
         .status(CODES.UNAUTHORIZED)
         .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
+    console.log("Request Body:", req.body); // Debugging line
     const validatedData = addressSchema.safeParse(req.body);
     if (!validatedData.success) {
       return res.status(400).json({
@@ -50,3 +51,24 @@ export const addAddress = async (req: AuthRequest, res: Response) => {
       );
   }
 };
+
+
+export const getAddresses = async (req: AuthRequest, res: Response) => { 
+  try {
+    const userId = typeof req.user === "string" ? req.user : req.user?._id;
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+    const addresses = await Address.find({ userId: userId }).lean();
+    return res
+      .status(CODES.OK)
+      .json(sendResponse(CODES.OK, addresses, "Addresses retrieved successfully"));
+  } catch (error) {
+    logger.error("Error retrieving addresses: " + error);
+    return res
+      .status(CODES.INTERNAL_SERVER_ERROR)
+      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Failed to retrieve addresses"));
+  }
+}
