@@ -1,13 +1,17 @@
-import type { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import type { NextFunction, Request, Response } from "express";
 import type { JwtPayload } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import env from "../lib/env.js";
 
 export interface AuthRequest extends Request {
   user?: string | (JwtPayload & { _id: string });
 }
 
-const isAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+const isAuthMiddleware = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
   const token = req.cookies?.token || req.headers?.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -18,7 +22,9 @@ const isAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) =
       throw new Error("JWT_SECRET not defined in env");
     }
 
-    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload & { _id: string };
+    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload & {
+      _id: string;
+    };
     req.user = decoded._id;
     next();
   } catch (error) {

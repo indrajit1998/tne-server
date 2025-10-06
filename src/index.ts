@@ -35,7 +35,7 @@ app.use("/api/v1/consignment", consignmentRoutes);
 app.use("/api/v1/travel", travelRoutes);
 app.use("/api/v1/address", addressRouter);
 app.use("/api/v1/admin", adminRouts);
-app.use("./api/v1/feedback",feedbackOrContactRoute)
+app.use("/api/v1/feedback", feedbackOrContactRoute);
 
 app.get("/", (req, res) => {
   res
@@ -53,5 +53,4 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   logger.info(`Server is running at http://localhost:${PORT}`);
-}
-);
+});

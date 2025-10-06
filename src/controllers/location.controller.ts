@@ -1,13 +1,14 @@
 import type { Request, Response } from "express";
 import { CODES } from "../constants/statusCodes";
 import sendResponse from "../lib/ApiResponse";
+import logger from "../lib/logger";
 import {
   getAddressFromCoords,
   getDistance,
   getPlaceDetails,
   getPlacePredictions,
 } from "../services/maps.service";
-import logger from "../lib/logger";
+
 const getSuggestions = async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
@@ -147,8 +148,8 @@ const getDistanceBetweenPoints = async (req: Request, res: Response) => {
 };
 
 export {
-  getSuggestions,
-  getLocationDetails,
   fetchAddressFromCoordinates,
   getDistanceBetweenPoints,
+  getLocationDetails,
+  getSuggestions,
 };

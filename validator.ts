@@ -1,12 +1,12 @@
-import { z, ZodObject, ZodError } from "zod";
-import type { Request, Response, NextFunction } from "express";
+import type { NextFunction, Request, Response } from "express";
+import { z, ZodError, ZodObject } from "zod";
 
 // Common reusable schemas
 const phoneSchema = z
   .string()
   .regex(/^\+91[6-9]\d{9}$/, "Invalid Indian phone number");
 
-const emailSchema = z.string().email("Invalid email address");
+const emailSchema = z.string().email().optional().nullable();
 
 /**
  * Middleware to validate request data (body, query, params) using a Zod schema
@@ -37,4 +37,4 @@ const validate =
     }
   };
 
-export { phoneSchema, emailSchema, validate };
+export { emailSchema, phoneSchema, validate };

@@ -12,5 +12,4 @@ authRouter.post("/generateOtp", generateOtp);
 authRouter.post("/verifyOtp", verifyOtp);
 authRouter.post("/registerUser", isAuthMiddleware, registerUser);
 
-
 export default authRouter;
