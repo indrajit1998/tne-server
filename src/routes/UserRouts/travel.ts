@@ -1,14 +1,14 @@
-import express, { Router } from "express";
+import { Router } from "express";
 
-import { validate } from "../../middlewares/validator";
+import { validate } from "../../../validator";
 import {
   createTravel,
   getTravels,
   locateTravel,
   locateTravelbyid,
 } from "../../controllers/UserController/travel";
-import { createTravelSchema } from "../../middlewares/travel.validator";
 import isAuthMiddleware from "../../middlewares/authMiddleware";
+import { createTravelSchema } from "../../middlewares/travel.validator";
 
 const travelRouter = Router();
 travelRouter.post(

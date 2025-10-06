@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { validate } from "../../../validator";
 import {
   acceptCarryRequest,
   carryRequestBySender,
@@ -11,7 +12,6 @@ import {
   updateTravelConsignmentStatus,
 } from "../../controllers/Consignment/consignment";
 import isAuthMiddleware from "../../middlewares/authMiddleware";
-import { validate } from "../../middlewares/validator";
 import { createConsignmentSchema } from "../../middlewares/consignment.validator";
 
 const consignmentRouter = Router();
@@ -34,12 +34,30 @@ consignmentRouter.get(
   locateConsignmentById
 );
 
-consignmentRouter.post("/carryRequestBySender",isAuthMiddleware,carryRequestBySender);
-consignmentRouter.post("/carryRequestByTraveller",isAuthMiddleware,carryRequestByTraveller);
-consignmentRouter.patch("/acceptCarryRequest",isAuthMiddleware,acceptCarryRequest);
-consignmentRouter.patch("/rejectCarryRequest", isAuthMiddleware, rejectCarryRequest);
-consignmentRouter.patch("/updateTravelConsignmentStatus/:travelConsignmentId", isAuthMiddleware, updateTravelConsignmentStatus);
-
-
+consignmentRouter.post(
+  "/carryRequestBySender",
+  isAuthMiddleware,
+  carryRequestBySender
+);
+consignmentRouter.post(
+  "/carryRequestByTraveller",
+  isAuthMiddleware,
+  carryRequestByTraveller
+);
+consignmentRouter.patch(
+  "/acceptCarryRequest",
+  isAuthMiddleware,
+  acceptCarryRequest
+);
+consignmentRouter.patch(
+  "/rejectCarryRequest",
+  isAuthMiddleware,
+  rejectCarryRequest
+);
+consignmentRouter.patch(
+  "/updateTravelConsignmentStatus/:travelConsignmentId",
+  isAuthMiddleware,
+  updateTravelConsignmentStatus
+);
 
 export default consignmentRouter;
