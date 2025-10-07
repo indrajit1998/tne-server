@@ -28,13 +28,25 @@ app.use(express.json());
 app.use(requestLogger);
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Auth and profile
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", profileRoutes);
+
+// search location
 app.use("/api/v1/location", locationRouter);
+
+// publish
 app.use("/api/v1/consignment", consignmentRoutes);
 app.use("/api/v1/travel", travelRoutes);
+
+// create and get addresses
 app.use("/api/v1/address", addressRouter);
+
+// admin
 app.use("/api/v1/admin", adminRouts);
+
+// feedback
 app.use("/api/v1/feedback", feedbackOrContactRoute);
 
 app.get("/", (req, res) => {

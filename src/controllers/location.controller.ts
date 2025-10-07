@@ -12,6 +12,7 @@ import {
 const getSuggestions = async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
+
     if (!query || query.trim() === "") {
       return res
         .status(CODES.BAD_REQUEST)
@@ -23,6 +24,7 @@ const getSuggestions = async (req: Request, res: Response) => {
           )
         );
     }
+
     const suggestions = await getPlacePredictions(query);
     return res
       .status(CODES.OK)

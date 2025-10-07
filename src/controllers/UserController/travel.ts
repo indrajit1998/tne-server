@@ -1,10 +1,10 @@
 import type { Response } from "express";
-import { TravelModel } from "../../models/travel.model";
+import mongoose from "mongoose";
+import { formatDuration } from "../../lib/utils";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
 import { Address } from "../../models/address.model";
-import mongoose from "mongoose";
+import { TravelModel } from "../../models/travel.model";
 import { getDistance } from "../../services/maps.service";
-import { formatDuration } from "../../lib/utils";
 
 export const createTravel = async (req: AuthRequest, res: Response) => {
   try {
@@ -103,17 +103,42 @@ export const getTravels = async (req: AuthRequest, res: Response) => {
 
 export const locateTravel = async (req: AuthRequest, res: Response) => {
   try {
-    const { fromstate, tostate } = req.body;
+    const { fromstate, tostate, date, modeOfTravel } = req.query as {
+      fromstate: string;
+      tostate: string;
+      date: string;
+      modeOfTravel?: "air" | "roadways" | "train";
+    };
     const currentUserId = req.user;
+
+    if (!fromstate || !tostate || !date) {
+      return res
+        .status(400)
+        .json({ message: "Missing required query parameters" });
+    }
+
+    // Parse date to ensure we match travels on that day
+    const travelDate = new Date(date);
+    travelDate.setHours(0, 0, 0, 0); // start of the day
+    const nextDay = new Date(travelDate);
+    nextDay.setDate(travelDate.getDate() + 1);
+
+    // Default modeOfTravel to "train" if not provided
+    const travelMode = modeOfTravel || "train";
+
     const travels = await TravelModel.find({
       "fromAddress.state": fromstate,
       "toAddress.state": tostate,
+      expectedStartDate: { $gte: travelDate, $lt: nextDay },
       status: "upcoming",
-      travelerId:currentUserId,
+      travelerId: { $ne: currentUserId },
+      modeOfTravel: travelMode,
     });
+
     if (!travels || travels.length === 0) {
       return res.status(404).json({ message: "No travels found", travels: [] });
     }
+
     return res
       .status(200)
       .json({ message: "Travels fetched successfully", travels });
