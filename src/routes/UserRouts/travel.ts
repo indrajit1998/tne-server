@@ -11,6 +11,7 @@ import isAuthMiddleware from "../../middlewares/authMiddleware";
 import { createTravelSchema } from "../../middlewares/travel.validator";
 
 const travelRouter = Router();
+
 travelRouter.post(
   "/createTravel",
   isAuthMiddleware,
@@ -20,4 +21,5 @@ travelRouter.post(
 travelRouter.get("/getTravels", isAuthMiddleware, getTravels);
 travelRouter.get("/locateTravel", isAuthMiddleware, locateTravel);
 travelRouter.get("/locateTravelByid/:id", isAuthMiddleware, locateTravelbyid);
+
 export default travelRouter;
