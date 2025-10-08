@@ -103,7 +103,7 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
     console.log("From City:", fromAddressObj.city);
     console.log("To City:", toAddressObj.city);
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
-    console.log("Distance:", distance);
+    console.log("Distance:", distance?.distance ? distance.distance : 0);
     const trainPricing = await calculateTrainFare(
       weightInKg,
       distance?.distanceValue || 0
