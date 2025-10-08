@@ -1,71 +1,118 @@
 import type { Response } from "express";
+import type { JwtPayload } from "jsonwebtoken";
+import mongoose from "mongoose";
 import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
-import { User } from "../../models/user.model";
 import type { AuthRequest } from "../../middlewares/authMiddleware.js";
-import { TravelModel } from "../../models/travel.model.js";
 import ConsignmentModel from "../../models/consignment.model.js";
-import { createBankFundAccount, createPayout, createRazorpayContactId, createVpaFundAccount, validateVpa } from "../../services/razorpay.service.js";
-import PayoutAccountsModel from "../../models/payoutaccounts.model.js";
 import Earning from "../../models/earning.model.js";
-import mongoose from "mongoose";
 import Payment from "../../models/payment.model.js";
-import e from "express";
-import type { JwtPayload } from "jsonwebtoken";
+import PayoutAccountsModel from "../../models/payoutaccounts.model.js";
+import { TravelModel } from "../../models/travel.model.js";
+import { User } from "../../models/user.model";
+import {
+  createBankFundAccount,
+  createPayout,
+  createRazorpayContactId,
+  createVpaFundAccount,
+  validateVpa,
+} from "../../services/razorpay.service.js";
 
- 
- export const getProfile = async (req: AuthRequest, res: Response) => {
+export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const userId = typeof req.user === "string" ? req.user : req.user?._id;
     if (!userId) {
-      return res.status(CODES.UNAUTHORIZED).json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
 
-    const user = await User.findById(userId).select("-__v -createdAt -updatedAt -_id");
+    const user = await User.findById(userId).select(
+      "-__v -createdAt -updatedAt -_id"
+    );
     if (!user) {
-      return res.status(CODES.NOT_FOUND).json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
+      return res
+        .status(CODES.NOT_FOUND)
+        .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
     }
-    return res.status(CODES.OK).json(sendResponse(CODES.OK, user, "User profile fetched successfully"));
+    return res
+      .status(CODES.OK)
+      .json(sendResponse(CODES.OK, user, "User profile fetched successfully"));
   } catch (error) {
     console.error("Error fetching user profile:", error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong"));
+      .json(
+        sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
+      );
   }
 };
 
-
-export const getTravelAndConsignment = async (req: AuthRequest, res: Response) => {
+export const getTravelAndConsignment = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
-    const userId=req.user;
+    const userId = req.user;
     if (!userId) {
-      return res.status(CODES.UNAUTHORIZED).json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
-    const travels=await TravelModel.find({ travelerId: userId }).sort({ createdAt: -1 });
-    const consignments = await ConsignmentModel.find({ senderId: userId }).sort({ createdAt: -1 });
-    return res.status(CODES.OK).json(sendResponse(CODES.OK, {travels, consignments}, "Travel and Consignment data fetched successfully"));
-    
+    const travels = await TravelModel.find({ travelerId: userId }).sort({
+      createdAt: -1,
+    });
+    const consignments = await ConsignmentModel.find({ senderId: userId }).sort(
+      { createdAt: -1 }
+    );
+    return res
+      .status(CODES.OK)
+      .json(
+        sendResponse(
+          CODES.OK,
+          { travels, consignments },
+          "Travel and Consignment data fetched successfully"
+        )
+      );
   } catch (error) {
     console.error("Error fetching user profile:", error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong while fetching travel and consignment data"));
+      .json(
+        sendResponse(
+          CODES.INTERNAL_SERVER_ERROR,
+          null,
+          "Something went wrong while fetching travel and consignment data"
+        )
+      );
   }
-}
+};
 
-export const createRazorpayCustomerId = async (req: AuthRequest, res: Response) => {
-
+export const createRazorpayCustomerId = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
     const userId = req.user;
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(CODES.NOT_FOUND).json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
+      return res
+        .status(CODES.NOT_FOUND)
+        .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
     }
-    if (!user.onboardingCompleted) { 
-      return res.status(CODES.BAD_REQUEST).json(sendResponse(CODES.BAD_REQUEST, null, "User onboarding not completed"));  
+    if (!user.onboardingCompleted) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(
+          sendResponse(CODES.BAD_REQUEST, null, "User onboarding not completed")
+        );
     }
-    if(!user.email || !user.firstName || !user.lastName){
-      return res.status(CODES.BAD_REQUEST).json(sendResponse(CODES.BAD_REQUEST, null, "User email or name not found"));
+    if (!user.email || !user.firstName || !user.lastName) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(
+          sendResponse(CODES.BAD_REQUEST, null, "User email or name not found")
+        );
     }
     const razorpayCustomerId = await createRazorpayContactId(
       `${user.firstName} ${user.lastName}`,
@@ -74,15 +121,18 @@ export const createRazorpayCustomerId = async (req: AuthRequest, res: Response) 
     );
     user.razorpayCustomerId = razorpayCustomerId;
     await user.save();
-    return res.status(CODES.OK).json(sendResponse(CODES.OK, { razorpayCustomerId }));
+    return res
+      .status(CODES.OK)
+      .json(sendResponse(CODES.OK, { razorpayCustomerId }));
   } catch (error) {
     console.error("Error creating Razorpay customer ID:", error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")); 
+      .json(
+        sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
+      );
   }
-
-}
+};
 
 export const addFunds = async (req: AuthRequest, res: Response) => {
   try {
@@ -91,7 +141,9 @@ export const addFunds = async (req: AuthRequest, res: Response) => {
     if (!type || !details) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "All details are necessary"));
+        .json(
+          sendResponse(CODES.BAD_REQUEST, null, "All details are necessary")
+        );
     }
 
     const userId = req.user;
@@ -112,7 +164,13 @@ export const addFunds = async (req: AuthRequest, res: Response) => {
     if (!userRazorpayCustomerId) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "Razorpay customer ID not found"));
+        .json(
+          sendResponse(
+            CODES.BAD_REQUEST,
+            null,
+            "Razorpay customer ID not found"
+          )
+        );
     }
 
     const name = `${user?.firstName} ${user?.lastName}`;
@@ -164,20 +222,24 @@ export const addFunds = async (req: AuthRequest, res: Response) => {
     console.error("Error adding funds:", error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong while adding funds"));
+      .json(
+        sendResponse(
+          CODES.INTERNAL_SERVER_ERROR,
+          null,
+          "Something went wrong while adding funds"
+        )
+      );
   }
 };
-
 
 export const withdrawFunds = async (req: AuthRequest, res: Response) => {
   try {
     const { earningId } = req.body;
     const rawUser = req.user;
-const userId =
-  typeof rawUser === "string"
-    ? rawUser
-    : (rawUser as JwtPayload & { _id: string })._id;
-
+    const userId =
+      typeof rawUser === "string"
+        ? rawUser
+        : (rawUser as JwtPayload & { _id: string })._id;
 
     if (!userId) {
       return res
@@ -219,7 +281,7 @@ const userId =
       travelId: earning.travelId,
       consignmentId: earning.consignmentId,
       amount,
-      status: "pending", 
+      status: "pending",
       type: "traveller_earning",
       razorpayPaymentId: payoutId,
     });

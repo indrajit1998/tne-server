@@ -5,8 +5,11 @@ import {
   getLocationDetails,
   getSuggestions,
 } from "../../controllers/location.controller";
+import isAuthMiddleware from "../../middlewares/authMiddleware";
 
 const locationRouter = Router();
+
+locationRouter.use(isAuthMiddleware);
 
 locationRouter.get("/suggestions", getSuggestions);
 locationRouter.get("/details", getLocationDetails);

@@ -5,6 +5,7 @@ import {
   createRazorpayCustomerId,
   getProfile,
   getTravelAndConsignment,
+  withdrawFunds,
 } from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
 
@@ -22,5 +23,5 @@ profileRouter.patch(
   createRazorpayCustomerId
 );
 profileRouter.post("/addFunds", isAuthMiddleware, addFunds);
-profileRouter.put("/withdrawFunds", isAuthMiddleware, addAddress);
+profileRouter.put("/withdrawFunds", isAuthMiddleware, withdrawFunds);
 export default profileRouter;
