@@ -412,7 +412,7 @@ export const carryRequestByTraveller = async (
 };
 export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
   try {
-    const { carryRequestId } = req.body;
+    const { carryRequestId ,travelId} = req.body;
     if (!carryRequestId) {
       return res.status(400).json({ message: "carryRequestId is required" });
     }
@@ -451,7 +451,7 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
         .json({ message: "Error in accepting carry request" });
     }
     const travelconsignments = await TravelConsignments.create({
-      travelId: carryRequest.travellerId,
+      travelId: travelId,
       consignmentId: carryRequest.consignmentId,
       senderOTP: otpForSender.otp,
       receiverOTP: otpForReceiver.otp,
@@ -480,7 +480,7 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
     const paymentModelInitalization = await Payment.create({
       userId: carryRequest.requestedBy,
       consignmentId: carryRequest.consignmentId,
-      travelId: carryRequest.travellerId,
+      travelId: travelId,
       type: "sender_pay",
       amount: carryRequest.senderPayAmount,
       status: "pending",
