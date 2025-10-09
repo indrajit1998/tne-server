@@ -5,6 +5,9 @@ import ConsignmentModel from "../../models/consignment.model";
 import { TravelModel } from "../../models/travel.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
+import { AdminModel } from "../../models/admin.model";
+
+
 
 
 export const manageUsers = async (req: AdminAuthRequest, res: Response) => {

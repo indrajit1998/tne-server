@@ -17,17 +17,17 @@ const earningSchema = new mongoose.Schema<Earning>(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Users",
+      ref: "User",
       required: true,
     },
     travelId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Travels",
+      ref: "Travel",
       required: true,
     },
     consignmentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Consignments",
+      ref: "Consignment",
       required: true,
     },
     amount: { type: Number, required: true },

@@ -15,13 +15,13 @@ interface Payment {
 
 const paymentSchema = new Schema<Payment>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     consignmentId: {
       type: Schema.Types.ObjectId,
       ref: "Consignments",
       required: true,
     },
-    travelId: { type: Schema.Types.ObjectId, ref: "Travels", required: true },
+    travelId: { type: Schema.Types.ObjectId, ref: "Travel", required: true },
     type: {
       type: String,
       enum: ["sender_pay", "traveller_earning", "platform_commission"],

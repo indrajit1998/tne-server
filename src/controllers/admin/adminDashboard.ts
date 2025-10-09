@@ -3,21 +3,41 @@ import { CarryRequest } from "../../models/carryRequest.model";
 import ConsignmentModel from "../../models/consignment.model";
 import Earning from "../../models/earning.model";
 import { FeedbackOrContactModel } from "../../models/feedbackOrContact";
+import Payment from "../../models/payment.model";
 import { TravelModel } from "../../models/travel.model";
 import { User } from "../../models/user.model";
 import type { Response } from "express";
 
 
 export const getUsersStats = async (req: AdminAuthRequest, res: Response) => {
-    try {
-        
-        const user = await User.find({}).select("-password -__v").lean();
-        return res.status(200).json({ user });
-    } catch (error) {
-        console.error("Error fetching user stats:", error);
-        res.status(500).json({ message: "Internal server error" });
-    }
-}
+  try {
+    // Pagination params
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit as string) || 20, 1);
+    const skip = (page - 1) * limit;
+
+    // Fetch users with pagination
+    const [users, totalUsers] = await Promise.all([
+      User.find({})
+        .select("-password -__v")
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(),
+    ]);
+
+    return res.status(200).json({
+      totalUsers,
+      currentPage: page,
+      totalPages: Math.ceil(totalUsers / limit),
+      users,
+    });
+  } catch (error) {
+    console.error("Error fetching user stats:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 
 export const getEarningsStats = async (req: AdminAuthRequest, res: Response) => { 
     try {
@@ -183,3 +203,33 @@ export const getFeedbackOrContact = async (req: AdminAuthRequest, res: Response)
         
     }
 }
+
+
+
+export const getTransactionHistory = async (req: AdminAuthRequest, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const skip = (page - 1) * limit;
+
+        const [transactions, totalTransactions] = await Promise.all([
+            Payment.find({})
+                .populate("userId" , "firstName email")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Payment.countDocuments({})
+        ]);
+
+        return res.status(200).json({
+            totalTransactions,
+            currentPage: page,
+            totalPages: Math.ceil(totalTransactions / limit),
+            transactions,
+        });
+    } catch (error) {
+        console.error("Error fetching transaction history:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
