@@ -1,32 +1,32 @@
-import type { Request, Response } from "express";
+import type { Response } from "express";
 
-import { model, Types } from "mongoose";
-import ConsignmentModel from "../../models/consignment.model";
+import { Types } from "mongoose";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
+import ConsignmentModel from "../../models/consignment.model";
 
 import mongoose from "mongoose";
-import { Address } from "../../models/address.model";
+import { notificationHelper } from "../../constants/constant";
 import logger from "../../lib/logger";
-import { getDistance } from "../../services/maps.service";
+import {
+  calculateFlightFare,
+  calculateTrainFare,
+} from "../../lib/pricingLogic";
 import {
   calculateSenderPay,
   calculateTravellerEarning,
   calculateVolumetricWeight,
   generateOtp,
 } from "../../lib/utils";
-import {
-  calculateFlightFare,
-  calculateTrainFare,
-} from "../../lib/pricingLogic";
-import TravelConsignments from "../../models/travelconsignments.model";
+import { Address } from "../../models/address.model";
 import { CarryRequest } from "../../models/carryRequest.model";
-import Notification from "../../models/notification.model";
-import { TravelModel } from "../../models/travel.model";
-import { notificationHelper } from "../../constants/constant";
-import { User } from "../../models/user.model";
-import { createRazorpayContactId } from "../../services/razorpay.service";
-import Payment from "../../models/payment.model";
 import Earning from "../../models/earning.model";
+import Notification from "../../models/notification.model";
+import Payment from "../../models/payment.model";
+import { TravelModel } from "../../models/travel.model";
+import TravelConsignments from "../../models/travelconsignments.model";
+import { User } from "../../models/user.model";
+import { getDistance } from "../../services/maps.service";
+import { createRazorpayContactId } from "../../services/razorpay.service";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -166,19 +166,48 @@ export const getConsignments = async (req: AuthRequest, res: Response) => {
 
 export const locateConsignment = async (req: AuthRequest, res: Response) => {
   try {
-    const { fromstate, tostate } = req.body;
     const currentUserId = req.user;
-    logger.info("Locating consignments from" + fromstate + "to" + tostate);
+
+    const { fromstate, tostate, date } = req.query as {
+      fromstate: string;
+      tostate: string;
+      date: string;
+    };
+
+    // Define the day range
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(startOfDay.getDate() + 1);
+
+    logger.info(
+      "Locating consignments from " +
+        fromstate +
+        " to " +
+        tostate +
+        " on " +
+        startOfDay.toISOString() +
+        " and between " +
+        endOfDay.toISOString()
+    );
+
     const consignments = await ConsignmentModel.find({
       "fromAddress.state": fromstate,
       "toAddress.state": tostate,
+      sendingDate: { $gte: startOfDay, $lt: endOfDay },
+      status: "published",
       senderId: { $ne: currentUserId },
-    });
+    })
+      .sort({ createdAt: -1 }) // recent first
+      .lean();
 
     if (!consignments || consignments.length === 0) {
       return res
         .status(404)
-        .json({ message: "No consignments found", consignments: [] });
+        .json({
+          message: "No consignments found for the given route and date",
+          consignments: [],
+        });
     }
     return res
       .status(200)
@@ -260,12 +289,10 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       status: "pending",
     });
     if (existingRequest) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "You have already sent a carry request for this consignment and travel",
-        });
+      return res.status(400).json({
+        message:
+          "You have already sent a carry request for this consignment and travel",
+      });
     }
     const carryRequestBySender = await CarryRequest.create({
       consignmentId: consignmentId,
@@ -305,12 +332,10 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
         .status(500)
         .json({ message: "Error in creating notification" });
     }
-    return res
-      .status(201)
-      .json({
-        message: "Carry request sent successfully",
-        carryRequestBySender,
-      });
+    return res.status(201).json({
+      message: "Carry request sent successfully",
+      carryRequestBySender,
+    });
   } catch (error) {
     console.error("❌ Error in carry request by sender:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -331,12 +356,9 @@ export const carryRequestByTraveller = async (
       return res.status(404).json({ message: "No travel found" });
     }
     if (travel.travelerId.toString() !== travellerId) {
-      return res
-        .status(403)
-        .json({
-          message:
-            "You are not authorized to send carry request for this travel",
-        });
+      return res.status(403).json({
+        message: "You are not authorized to send carry request for this travel",
+      });
     }
     const consignment = await ConsignmentModel.findById(consignmentId);
     if (!consignment) {
@@ -355,12 +377,10 @@ export const carryRequestByTraveller = async (
       status: "pending",
     });
     if (existingRequest) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "You have already sent a carry request for this consignment and travel",
-        });
+      return res.status(400).json({
+        message:
+          "You have already sent a carry request for this consignment and travel",
+      });
     }
     const carryRequestByTraveller = await CarryRequest.create({
       consignmentId: consignmentId,
@@ -412,7 +432,7 @@ export const carryRequestByTraveller = async (
 };
 export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
   try {
-    const { carryRequestId ,travelId} = req.body;
+    const { carryRequestId, travelId } = req.body;
     if (!carryRequestId) {
       return res.status(400).json({ message: "carryRequestId is required" });
     }
@@ -574,15 +594,18 @@ export const updateTravelConsignmentStatus = async (
         amount: travelConsignment.travellerEarning,
         status: "pending",
         is_withdrawn: false,
-      })
+      });
       if (!earning) {
-        return res.status(500).json({ message: "Error in creating earning record" });
+        return res
+          .status(500)
+          .json({ message: "Error in creating earning record" });
       }
-     
 
-      return res
-        .status(200)
-        .json({ message: "Status updated to in_transit and earning record created", travelConsignment, earning });
+      return res.status(200).json({
+        message: "Status updated to in_transit and earning record created",
+        travelConsignment,
+        earning,
+      });
     } else if (newStatus === "delivered") {
       if (travelConsignment.status !== "in_transit") {
         return res.status(400).json({ message: "Invalid status transition" });
