@@ -167,56 +167,88 @@ export const getConsignments = async (req: AuthRequest, res: Response) => {
 export const locateConsignment = async (req: AuthRequest, res: Response) => {
   try {
     const currentUserId = req.user;
-
     const { fromstate, tostate, date } = req.query as {
       fromstate: string;
       tostate: string;
       date: string;
     };
 
-    // Define the day range
+    if (!fromstate || !tostate || !date) {
+      return res
+        .status(400)
+        .json({ message: "fromstate, tostate and date are required" });
+    }
+
+    // Normalize and tokenize
+    const tokenize = (str: string) =>
+      str
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .filter(Boolean);
+
+    const fromTokens = tokenize(fromstate);
+    const toTokens = tokenize(tostate);
+
+    const fromRegexes = fromTokens.map((token) => new RegExp(token, "i"));
+    const toRegexes = toTokens.map((token) => new RegExp(token, "i"));
+
+    // Define start and end of day
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(startOfDay);
     endOfDay.setDate(startOfDay.getDate() + 1);
 
     logger.info(
-      "Locating consignments from " +
-        fromstate +
-        " to " +
-        tostate +
-        " on " +
-        startOfDay.toISOString() +
-        " and between " +
-        endOfDay.toISOString()
+      `🔍 Locating consignments from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()}`
     );
 
     const consignments = await ConsignmentModel.find({
-      "fromAddress.state": fromstate,
-      "toAddress.state": tostate,
-      sendingDate: { $gte: startOfDay, $lt: endOfDay },
-      status: "published",
-      senderId: { $ne: currentUserId },
+      $and: [
+        {
+          $or: [
+            { "fromAddress.state": { $in: fromRegexes } },
+            { "fromAddress.city": { $in: fromRegexes } },
+            { "fromAddress.street": { $in: fromRegexes } },
+          ],
+        },
+        {
+          $or: [
+            { "toAddress.state": { $in: toRegexes } },
+            { "toAddress.city": { $in: toRegexes } },
+            { "toAddress.street": { $in: toRegexes } },
+          ],
+        },
+        {
+          sendingDate: { $gte: startOfDay, $lt: endOfDay },
+          status: "published",
+          senderId: { $ne: currentUserId },
+        },
+      ],
     })
-      .sort({ createdAt: -1 }) // recent first
+      .sort({ createdAt: -1 })
+      .limit(50)
       .lean();
 
     if (!consignments || consignments.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "No consignments found for the given route and date",
-          consignments: [],
-        });
+      logger.info(
+        `❌ No consignments found for ${fromstate} → ${tostate} on ${date}`
+      );
+      return res.status(404).json({
+        message: "No consignments found for the given route and date",
+        consignments: [],
+      });
     }
-    return res
-      .status(200)
-      .json({ message: "Consignments fetched successfully", consignments });
-  } catch (error) {
-    console.error("❌ Error locating consignments:", error);
-    return res
-      .status(500)
-      .json({ message: "Internal server error while locating consignments" });
+
+    return res.status(200).json({
+      message: "Consignments fetched successfully",
+      consignments,
+    });
+  } catch (error: any) {
+    logger.error("❌ Error locating consignments:", error);
+    return res.status(500).json({
+      message: "Internal server error while locating consignments",
+      error: error instanceof Error ? error.message : error,
+    });
   }
 };
 

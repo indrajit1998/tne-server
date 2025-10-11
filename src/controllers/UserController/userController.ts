@@ -33,7 +33,9 @@ export const generateOtp = async (req: Request, res: Response) => {
     }
 
     const validPhone = result.data;
-    const otp = env.NODE_ENV === "development" ? "123456" : generateRandomOtp();
+
+    // Generate OTP for dev mode (no API call)
+    const otp = generateRandomOtp();
 
     console.log(`🔹 Generated OTP for ${validPhone}: ${otp}`);
 
@@ -58,6 +60,7 @@ export const generateOtp = async (req: Request, res: Response) => {
 
     // ✅ Save/Update OTP in Verification collection
     let verification = await Verification.findOne({ phoneNumber: validPhone });
+
     if (verification) {
       verification.code = parseInt(otp, 10);
       verification.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -82,6 +85,8 @@ export const generateOtp = async (req: Request, res: Response) => {
           );
       }
     }
+
+    console.log(`🔹 Dev mode: OTP for ${validPhone} is ${otp}. SMS NOT sent.`);
 
     // ✅ Send SMS using Pingbix
     const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
@@ -115,6 +120,8 @@ export const generateOtp = async (req: Request, res: Response) => {
 
       console.log("✅ SMS API Response:", smsResponse.data);
 
+      // console.log("Prod otp brnach commented out");
+
       // ✅ Return API response
       if (smsResponse.data?.status === "success") {
         return res
@@ -143,15 +150,13 @@ export const generateOtp = async (req: Request, res: Response) => {
         `🔹 Dev mode: OTP for ${validPhone} is ${otp}. SMS not sent.`
       );
 
-      return res
-        .status(CODES.OK)
-        .json(
-          sendResponse(
-            CODES.OK,
-            { phoneNumber: validPhone },
-            "OTP generated successfully (dev mode)"
-          )
-        );
+      return res.status(CODES.OK).json(
+        sendResponse(
+          CODES.OK,
+          { phoneNumber: validPhone, otp }, // include otp for dev convenience
+          "OTP generated successfully (dev mode)"
+        )
+      );
     }
   } catch (error: any) {
     console.error(
@@ -169,7 +174,9 @@ export const generateOtp = async (req: Request, res: Response) => {
 export const verifyOtp = async (req: Request, res: Response) => {
   try {
     const { phoneNumber, otp } = req.body;
+
     const result = phoneSchema.safeParse(phoneNumber);
+
     if (!result.success) {
       return res
         .status(CODES.BAD_REQUEST)
@@ -185,34 +192,34 @@ export const verifyOtp = async (req: Request, res: Response) => {
     const validPhone = result.data;
 
     // ✅ Dev mode shortcut (skip DB + OTP check)
-    if (env.NODE_ENV === "development" && otp === "123456") {
-      console.log(`🔹 Dev mode OTP verified for ${validPhone}`);
+    // if (env.NODE_ENV === "development" && otp === "123456") {
+    //   console.log(`🔹 Dev mode OTP verified for ${validPhone}`);
 
-      let user = await User.findOne({ phoneNumber: validPhone });
-      if (!user) {
-        user = await User.create({ phoneNumber: validPhone, isVerified: true });
-      } else {
-        user.isVerified = true;
-        await user.save();
-      }
+    //   let user = await User.findOne({ phoneNumber: validPhone });
+    //   if (!user) {
+    //     user = await User.create({ phoneNumber: validPhone, isVerified: true });
+    //   } else {
+    //     user.isVerified = true;
+    //     await user.save();
+    //   }
 
-      const token = jwt.sign(
-        { _id: user._id, phoneNumber: validPhone },
-        env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+    //   const token = jwt.sign(
+    //     { _id: user._id, phoneNumber: validPhone },
+    //     env.JWT_SECRET,
+    //     { expiresIn: "7d" }
+    //   );
 
-      return res.status(CODES.OK).json(
-        sendResponse(
-          CODES.OK,
-          {
-            token,
-            onboardingCompleted: user.onboardingCompleted,
-          },
-          "Phone number verified successfully (dev mode)"
-        )
-      );
-    }
+    //   return res.status(CODES.OK).json(
+    //     sendResponse(
+    //       CODES.OK,
+    //       {
+    //         token,
+    //         onboardingCompleted: user.onboardingCompleted,
+    //       },
+    //       "Phone number verified successfully (dev mode)"
+    //     )
+    //   );
+    // }
 
     const verification = await Verification.findOne({
       phoneNumber: validPhone,
@@ -228,7 +235,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
           )
         );
     }
-    if (verification.expiresAt < new Date()) {
+    if (env.NODE_ENV !== "development" && verification.expiresAt < new Date()) {
       await Verification.deleteOne({ phoneNumber: validPhone }); // cleanup expired OTP
       return res
         .status(CODES.GONE)

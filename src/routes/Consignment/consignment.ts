@@ -34,6 +34,12 @@ consignmentRouter.get(
   locateConsignmentById
 );
 
+consignmentRouter.get(
+  "/getConsignmentsForTravel/:id",
+  isAuthMiddleware
+  // getConsignmentsForTravel
+);
+
 consignmentRouter.post(
   "/carryRequestBySender",
   isAuthMiddleware,
