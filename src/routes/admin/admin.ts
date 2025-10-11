@@ -4,8 +4,9 @@ import { isAdminAuthMiddleware } from "../../middlewares/adminAuthMiddleware";
 import { consignmentStats, getEarningsStats, requestStats, travelStats ,getDashboardStats, getTransactionHistory} from "../../controllers/admin/adminDashboard";
 import { getUsersList, getUserDetails, deleteUser } from "../../controllers/admin/userManagement";
 import { getPrices, managePrices } from "../../controllers/admin/priceManagement";
-import { deleteUser, manageUsers } from "../../controllers/admin/userManagement";
-import { getTravellerReport } from "../../controllers/admin/report";
+import { addAdminUser, deleteAdminUser, editAdminUser, getAdminUsers,getAdminUserById } from "../../controllers/admin/management";
+import { getSenderReport, getTravellerReport } from "../../controllers/admin/report";
+import {getFeedback, getSupportContacts} from "../../controllers/admin/feedbackAndContacts";
 
 const adminRouts = Router();
 adminRouts.post("/adminLogin", adminLogin)
@@ -29,10 +30,17 @@ adminRouts.patch("/managePrices", managePrices)
 
 //Admin Management
 adminRouts.get("/getAdminUsers", getAdminUsers)
-adminRouts.delete("/deleteAdminUser", deleteAdminUser)
-adminRouts.patch("/editAdminUser", editAdminUser)
-adminRouts.post("/addAdminUser", addAdminUser) 
-adminRouts.get("/getTravellerReport",getTravellerReport)
+adminRouts.get("/getAdminUserById/:id", getAdminUserById)
+adminRouts.delete("/deleteAdminUser/:id", deleteAdminUser)
+adminRouts.patch("/editAdminUser/:id", editAdminUser)
+adminRouts.post("/addAdminUser", addAdminUser)
+
+//Reports
+adminRouts.get("/getTravellerReport", getTravellerReport)
+adminRouts.get("/getSenderReport", getSenderReport)
+
+//Dashboard Stats
+adminRouts.get("/getDashboardStats", getDashboardStats)
 
 //Feedback and Contacts
 adminRouts.get("/getFeedback", getFeedback)
