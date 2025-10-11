@@ -27,7 +27,7 @@ export const adminLogin = async (req:Request, res:Response) => {
             { expiresIn: "7d" }
           );
           res.cookie("token", token, cookiesOption);
-        return res.status(CODES.OK).json(sendResponse(CODES.OK, null, "Login successful"));
+        return res.status(CODES.OK).json(sendResponse(CODES.OK,{ admin, token }, "Login successful"));
     } catch (error) {
         console.error("Error during admin login:", error);
         res.status(500).json({ message: "Internal server error" });
