@@ -4,7 +4,7 @@ import { consignmentStats, getEarningsStats, getTransactionHistory, getUsersStat
 import { addAdminUser, deleteAdminUser, editAdminUser, getAdminUsers } from "../../controllers/admin/management";
 import { getPrices, managePrices } from "../../controllers/admin/priceManagement";
 import { deleteUser, manageUsers } from "../../controllers/admin/userManagement";
-import { getTravellerReport } from "../../controllers/admin/report";
+import { getConsolidateConsignment, getSenderReport, getTravellerReport } from "../../controllers/admin/report";
 
 const adminRouts = Router();
 adminRouts.post("adminLogin", adminLogin)
@@ -24,6 +24,8 @@ adminRouts.get("/getAdminUsers", getAdminUsers)
 adminRouts.delete("/deleteAdminUser", deleteAdminUser)
 adminRouts.patch("/editAdminUser", editAdminUser)
 adminRouts.post("/addAdminUser", addAdminUser) 
-adminRouts.get("/getTravellerReport",getTravellerReport)
+adminRouts.get("/getTravellerReport", getTravellerReport)
+adminRouts.get("/getSenderReport", getSenderReport)
+adminRouts.get("/getConsolidateConsignment", getConsolidateConsignment)
 
 export default adminRouts;
