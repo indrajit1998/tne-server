@@ -51,6 +51,6 @@ export const getTravellerReport = async (req:AdminAuthRequest, res:Response) => 
     res.status(200).json({ success: true, stats });
   } catch (err) {
     console.error("Error fetching traveller stats:", err);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ success: false, message: "Internal Server Error while fetching traveller stats" });
   }
 };
