@@ -14,23 +14,13 @@ export const getPrices = async (req: AdminAuthRequest, res: Response) => {
     }
 };
 
+//old one requires fareConfigId in body but there is only one document so no need to send id
 export const managePrices = async (req: AdminAuthRequest, res: Response) => {
     try {
-        const { TE, deliveryFee, margin, weightRateTrain, distanceRateTrain, baseFareTrain, weightRateFlight, distanceRateFlight, baseFareFlight, fareConfigId } = req.body;
-        const fareConfig = await FareConfigModel.findByIdAndUpdate(fareConfigId, {
-            TE,
-            deliveryFee,
-            margin,
-            weightRateTrain,
-            distanceRateTrain,
-            baseFareTrain,
-            weightRateFlight,
-            distanceRateFlight,
-            baseFareFlight
-        }, { new: true });
-        if (!fareConfig) {
-            return res.status(404).json({ message: "Fare config not found" });
-        }
+        // Get the values from the request body
+        const updatedValues = req.body;
+        const fareConfig = await FareConfigModel.findOneAndUpdate({}, updatedValues, { new: true, upsert: true });
+
         return res.status(200).json({ message: "Fare config updated successfully", fareConfig });
         
     } catch (error) {
