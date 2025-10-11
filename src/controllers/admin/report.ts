@@ -2,14 +2,17 @@ import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
 import type { Response } from "express";
 
-
-export const getTravellerReport = async (req:AdminAuthRequest, res:Response) => {
+export const getTravellerReport = async (req: AdminAuthRequest, res: Response) => {
   try {
+    // Parse pagination query params
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    // Main aggregation pipeline
     const stats = await CarryRequest.aggregate([
-      // Only include accepted requests (optional)
       { $match: { status: "accepted" } },
 
-      // Group by travellerId
       {
         $group: {
           _id: "$travellerId",
@@ -18,20 +21,17 @@ export const getTravellerReport = async (req:AdminAuthRequest, res:Response) => 
         },
       },
 
-      // Lookup traveller details from User collection
       {
         $lookup: {
-          from: "users", // collection name in MongoDB
+          from: "users",
           localField: "_id",
           foreignField: "_id",
           as: "traveller",
         },
       },
 
-      // Flatten traveller details
       { $unwind: "$traveller" },
 
-      // Project clean output
       {
         $project: {
           _id: 0,
@@ -44,13 +44,29 @@ export const getTravellerReport = async (req:AdminAuthRequest, res:Response) => 
         },
       },
 
-      // Optional: sort by top earners
       { $sort: { totalEarnings: -1 } },
+
+      // Apply pagination
+      { $skip: skip },
+      { $limit: limit },
     ]);
 
-    res.status(200).json({ success: true, stats });
+    // Get total number of distinct travellers for pagination metadata
+    const totalTravellers = await CarryRequest.distinct("travellerId", { status: "accepted" });
+    const totalPages = Math.ceil(totalTravellers.length / limit);
+
+    res.status(200).json({
+      success: true,
+      currentPage: page,
+      totalPages,
+      totalTravellers: totalTravellers.length,
+      stats,
+    });
   } catch (err) {
     console.error("Error fetching traveller stats:", err);
-    res.status(500).json({ success: false, message: "Internal Server Error while fetching traveller stats" });
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error while fetching traveller stats",
+    });
   }
 };
