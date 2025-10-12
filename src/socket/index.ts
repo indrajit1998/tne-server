@@ -1,5 +1,6 @@
 import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
+import env from "../lib/env";
 import { socketAuthMiddleware } from "./auth";
 import type {
   ClientToServerEvents,
@@ -7,7 +8,6 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "./types";
-import env from "../lib/env";
 
 let io: Server<
   ClientToServerEvents,
@@ -44,7 +44,12 @@ export const initSocket = (server: HttpServer) => {
     console.log(`✅ User ${userId} connected to socket.`);
 
     socket.on("ping:client", () => {
-      socket.emit("pong:server", { time: new Date().toISOString() });
+      const timestamp = new Date().toISOString();
+      console.log(
+        `\n📥 [PING RECEIVED]\n🕒 Time: ${timestamp}\n------------------------------`
+      );
+
+      socket.emit("pong:server", { time: timestamp });
     });
 
     socket.on("disconnect", (reason) => {

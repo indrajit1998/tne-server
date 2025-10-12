@@ -58,7 +58,7 @@ app.use("/api/v1/admin", adminRouts);
 app.use("/api/v1/feedback", feedbackOrContactRoute);
 
 // notifications
-app.use("/api/v1/notification", notificationRouter);
+app.use("/api/v1/notifications", notificationRouter);
 
 app.get("/", (req, res) => {
   res

@@ -5,7 +5,7 @@ import type { AuthRequest } from "../../middlewares/authMiddleware";
 import ConsignmentModel from "../../models/consignment.model";
 
 import mongoose from "mongoose";
-import { notificationHelper } from "../../constants/constant";
+
 import logger from "../../lib/logger";
 import {
   calculateFlightFare,
@@ -34,6 +34,7 @@ import {
   emitConsignmentCollected,
   emitConsignmentDelivered,
 } from "../../socket/events";
+import { notificationHelper } from "../Notifications/notification";
 
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
@@ -371,7 +372,7 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       createdAt: carryRequestBySender.createdAt,
     });
 
-    const notificationData = notificationHelper(
+    const notificationData = await notificationHelper(
       "bySender",
       { description: consignment.description },
       consignmentSender
@@ -485,7 +486,7 @@ export const carryRequestByTraveller = async (
       createdAt: carryRequestByTraveller.createdAt,
     });
 
-    const notificationData = notificationHelper(
+    const notificationData = await notificationHelper(
       "byTraveller",
       { description: consignment.description },
       travel.travelerId

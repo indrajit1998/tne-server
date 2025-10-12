@@ -1,11 +1,12 @@
 import type { Response } from "express";
+import { Types } from "mongoose";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
 import Notification from "../../models/notification.model";
+import { User } from "../../models/user.model";
 import {
   getNotificationsValidator,
   markReadValidator,
 } from "../../validations/notification.validator";
-import { Types } from "mongoose";
 
 export const getNotifications = async (req: AuthRequest, res: Response) => {
   try {
@@ -26,6 +27,9 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
         .limit(limitNum),
       Notification.countDocuments({ userId }),
     ]);
+
+    console.log("notifications: ", notifications);
+    console.log("total notifications: ", total);
 
     res.json({
       success: true,
@@ -108,4 +112,26 @@ export const createNotification = async ({
   if (!Types.ObjectId.isValid(userId)) throw new Error("Invalid userId");
 
   return Notification.create({ userId, type, message, meta });
+};
+
+export const notificationHelper = async (
+  type: "bySender" | "byTraveller",
+  consignment: { description: string },
+  userId: Types.ObjectId
+) => {
+  const user = await User.findById(userId).select("firstName lastName");
+  const name = user ? `${user.firstName} ${user.lastName}` : "Unknown user";
+
+  switch (type) {
+    case "bySender":
+      return {
+        title: "New Carry Request",
+        message: `${name} has requested you to carry their consignment.`,
+      };
+    case "byTraveller":
+      return {
+        title: "New Carry Request",
+        message: `${name} wants to carry your consignment to your requested location.`,
+      };
+  }
 };
