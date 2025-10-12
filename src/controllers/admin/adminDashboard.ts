@@ -8,36 +8,113 @@ import { TravelModel } from "../../models/travel.model";
 import { User } from "../../models/user.model";
 import type { Response } from "express";
 
+export const getDashboardStats = async (req: AdminAuthRequest, res: Response) => {
+    try {
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
 
-export const getUsersStats = async (req: AdminAuthRequest, res: Response) => {
-  try {
-    // Pagination params
-    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
-    const limit = Math.max(parseInt(req.query.limit as string) || 20, 1);
-    const skip = (page - 1) * limit;
+        const [
+            // Main Counters
+            totalUsers,
+            totalEarningsResult,
+            totalTravel,
+            totalConsignments,
+            totalRequests,
+            totalAcceptedRequests,
+            totalCancelledRequests, 
+            totalPendingRequests,
+            totalDeliveredConsignments,
+            totalFeedback,
+            totalSupport,
+            
+            // Daily Stats
+            dailyTravel,
+            dailyConsignments,
+            dailyRequests,
+            dailyAccepted,
+            dailyCancelled,
+            dailyDelivered,
 
-    // Fetch users with pagination
-    const [users, totalUsers] = await Promise.all([
-      User.find({})
-        .select("-password -__v")
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      User.countDocuments(),
-    ]);
+            // Monthly Stats
+            monthlyTravel,
+            monthlyConsignments,
+            monthlyRequests,
+            monthlyAccepted,
+            monthlyCancelled,
+            monthlyDelivered,
 
-    return res.status(200).json({
-      totalUsers,
-      currentPage: page,
-      totalPages: Math.ceil(totalUsers / limit),
-      users,
-    });
-  } catch (error) {
-    console.error("Error fetching user stats:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
+        ] = await Promise.all([
+            // Main Counters
+            User.countDocuments(),
+            Earning.aggregate([
+                { $match: { status: "completed" } },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]),
+            TravelModel.countDocuments(),
+            ConsignmentModel.countDocuments(),
+            CarryRequest.countDocuments(),
+            CarryRequest.countDocuments({ status: "accepted" }),
+            CarryRequest.countDocuments({ status: "rejected" }),
+            CarryRequest.countDocuments({ status: "pending" }), 
+            ConsignmentModel.countDocuments({ status: "delivered" }),
+            FeedbackOrContactModel.countDocuments({ Subject: "I want to give feedback" }),
+            FeedbackOrContactModel.countDocuments({ Subject: "I want to contact support" }), 
 
+            TravelModel.countDocuments({ createdAt: { $gte: startOfToday } }),
+            ConsignmentModel.countDocuments({ createdAt: { $gte: startOfToday } }),
+            CarryRequest.countDocuments({ createdAt: { $gte: startOfToday } }),
+            CarryRequest.countDocuments({ status: "accepted", createdAt: { $gte: startOfToday } }),
+            CarryRequest.countDocuments({ status: "rejected", createdAt: { $gte: startOfToday } }),
+            ConsignmentModel.countDocuments({ status: "delivered", createdAt: { $gte: startOfToday } }),
+
+            TravelModel.countDocuments({ createdAt: { $gte: startOfLastMonth } }),
+            ConsignmentModel.countDocuments({ createdAt: { $gte: startOfLastMonth } }),
+            CarryRequest.countDocuments({ createdAt: { $gte: startOfLastMonth } }),
+            CarryRequest.countDocuments({ status: "accepted", createdAt: { $gte: startOfLastMonth } }),
+            CarryRequest.countDocuments({ status: "rejected", createdAt: { $gte: startOfLastMonth } }),
+            ConsignmentModel.countDocuments({ status: "delivered", createdAt: { $gte: startOfLastMonth } }),
+        ]);
+
+        const totalEarnings = totalEarningsResult[0]?.total || 0;
+
+        const stats = {
+            totalUsers,
+            totalEarnings,
+            totalTravel,
+            totalConsignments,
+            totalRequests,
+            totalAccepted: totalAcceptedRequests,
+            totalCancelled: totalCancelledRequests,
+            totalPending: totalPendingRequests,
+            totalDelivered: totalDeliveredConsignments,
+            totalFeedback,
+            totalSupport,
+            daily: {
+                totalTravel: dailyTravel,
+                totalConsignments: dailyConsignments,
+                totalRequests: dailyRequests,
+                accepted: dailyAccepted,
+                cancelled: dailyCancelled,
+                delivered: dailyDelivered,
+            },
+            monthly: {
+                totalTravel: monthlyTravel,
+                totalConsignments: monthlyConsignments,
+                totalRequests: monthlyRequests,
+                accepted: monthlyAccepted,
+                cancelled: monthlyCancelled,
+                delivered: monthlyDelivered,
+            },
+        };
+        
+        return res.status(200).json({ data: stats, message: "Dashboard stats fetched successfully" });
+
+    } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
 
 export const getEarningsStats = async (req: AdminAuthRequest, res: Response) => { 
     try {
@@ -204,8 +281,6 @@ export const getFeedbackOrContact = async (req: AdminAuthRequest, res: Response)
     }
 }
 
-
-
 export const getTransactionHistory = async (req: AdminAuthRequest, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
@@ -214,7 +289,7 @@ export const getTransactionHistory = async (req: AdminAuthRequest, res: Response
 
         const [transactions, totalTransactions] = await Promise.all([
             Payment.find({})
-                .populate("userId" , "firstName email")
+                .populate("userId" , "firstName lastName email phoneNumber") // Populate with more user details
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -223,10 +298,10 @@ export const getTransactionHistory = async (req: AdminAuthRequest, res: Response
         ]);
 
         return res.status(200).json({
-            totalTransactions,
+            total: totalTransactions,
             currentPage: page,
             totalPages: Math.ceil(totalTransactions / limit),
-            transactions,
+            data: transactions,
         });
     } catch (error) {
         console.error("Error fetching transaction history:", error);
