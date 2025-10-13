@@ -1,6 +1,7 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
+import http from "http";
 import { CODES } from "./constants/statusCodes";
 import sendResponse from "./lib/ApiResponse";
 import connectDb from "./lib/connectDb";
@@ -13,14 +14,21 @@ import adminRouts from "./routes/admin/admin";
 import consignmentRoutes from "./routes/Consignment/consignment";
 import feedbackOrContactRoute from "./routes/feedbackOrContact/feedbackOrContact.route";
 import locationRouter from "./routes/location/location.router";
+import notificationRouter from "./routes/Notifications/notification.router";
 import authRoutes from "./routes/UserRouts/auth";
 import profileRoutes from "./routes/UserRouts/profile";
 import travelRoutes from "./routes/UserRouts/travel";
+import { initSocket } from "./socket";
 
 const PORT = parseInt(env.PORT, 10);
 
 const app = express();
 connectDb(env.DATABASE_URL);
+
+const server = http.createServer(app);
+
+// Initialize socket.io
+initSocket(server);
 
 app.use(cors());
 app.use(express.json());
@@ -49,6 +57,9 @@ app.use("/api/v1/admin", adminRouts);
 // feedback
 app.use("/api/v1/feedback", feedbackOrContactRoute);
 
+// notifications
+app.use("/api/v1/notifications", notificationRouter);
+
 app.get("/", (req, res) => {
   res
     .status(CODES.OK)
@@ -63,6 +74,6 @@ app.use((req, res, next) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   logger.info(`Server is running at http://localhost:${PORT}`);
 });
