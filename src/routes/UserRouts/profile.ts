@@ -24,4 +24,5 @@ profileRouter.patch(
 );
 profileRouter.post("/addFunds", isAuthMiddleware, addFunds);
 profileRouter.put("/withdrawFunds", isAuthMiddleware, withdrawFunds);
+
 export default profileRouter;

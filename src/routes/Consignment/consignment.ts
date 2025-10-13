@@ -5,6 +5,7 @@ import {
   carryRequestBySender,
   carryRequestByTraveller,
   createConsignment,
+  getCarryRequestById,
   getConsignments,
   locateConsignment,
   locateConsignmentById,
@@ -23,6 +24,7 @@ consignmentRouter.post(
   createConsignment
 );
 consignmentRouter.get("/getConsignments", isAuthMiddleware, getConsignments);
+
 consignmentRouter.get(
   "/locateConsignment",
   isAuthMiddleware,
@@ -64,6 +66,12 @@ consignmentRouter.patch(
   "/updateTravelConsignmentStatus/:travelConsignmentId",
   isAuthMiddleware,
   updateTravelConsignmentStatus
+);
+
+consignmentRouter.get(
+  "/getCarryRequestById/:requestId",
+  isAuthMiddleware,
+  getCarryRequestById
 );
 
 export default consignmentRouter;

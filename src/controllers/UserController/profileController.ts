@@ -28,8 +28,9 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
     }
 
     const user = await User.findById(userId).select(
-      "-__v -createdAt -updatedAt -_id"
+      "-__v -createdAt -updatedAt"
     );
+
     if (!user) {
       return res
         .status(CODES.NOT_FOUND)
