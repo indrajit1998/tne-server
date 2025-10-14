@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import mongoose from "mongoose";
+import logger from "../../lib/logger";
 import { formatDuration } from "../../lib/utils";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
 import { Address } from "../../models/address.model";
@@ -20,7 +21,7 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       modeOfTravel,
     } = req.body;
 
-    // Validate ObjectIds first
+    // 1 Validate ObjectIds
     if (
       !mongoose.Types.ObjectId.isValid(fromAddressId) ||
       !mongoose.Types.ObjectId.isValid(toAddressId)
@@ -28,6 +29,7 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid address format" });
     }
 
+    // 2 Fetch addresses
     const fromAddressObj = await Address.findById(fromAddressId);
     const toAddressObj = await Address.findById(toAddressId);
 
@@ -35,6 +37,21 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid address IDs" });
     }
 
+    // 3 Validate dates
+    const startTime = new Date(expectedStartDate).getTime();
+    const endTime = new Date(expectedEndDate).getTime();
+
+    if (isNaN(startTime) || isNaN(endTime)) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    if (endTime < startTime) {
+      return res
+        .status(400)
+        .json({ message: "Expected end date cannot be before start date" });
+    }
+
+    // 4 Prepare addresses
     const fromAddress = {
       street: fromAddressObj.street,
       city: fromAddressObj.city,
@@ -55,8 +72,13 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       flatNo: toAddressObj.flatNo,
     };
 
+    // 5 Calculate distance
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
+
+    // 6 Calculate duration safely
     const durationOfTravel = formatDuration(expectedStartDate, expectedEndDate);
+
+    // 7 Create travel
     const travel = await TravelModel.create({
       travelerId,
       fromAddress,
@@ -71,13 +93,15 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       durationOfStay,
       durationOfTravel,
       status: "upcoming",
-      modeOfTravel, // ✅ now included
+      modeOfTravel,
     });
 
-    res.status(201).json({ message: "Travel created successfully", travel });
+    return res
+      .status(201)
+      .json({ message: "Travel created successfully", travel });
   } catch (error: any) {
     console.error("Error creating travel:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -112,41 +136,88 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     const currentUserId = req.user;
 
     if (!fromstate || !tostate || !date) {
-      return res
-        .status(400)
-        .json({ message: "Missing required query parameters" });
+      return res.status(400).json({
+        message: "Missing required query parameters: fromstate, tostate, date",
+      });
     }
 
-    // Parse date to ensure we match travels on that day
-    const travelDate = new Date(date);
-    travelDate.setHours(0, 0, 0, 0); // start of the day
-    const nextDay = new Date(travelDate);
-    nextDay.setDate(travelDate.getDate() + 1);
+    // Normalize and tokenize for flexible partial matching
+    const tokenize = (str: string) =>
+      str
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .filter(Boolean);
 
-    // Default modeOfTravel to "train" if not provided
-    const travelMode = modeOfTravel || "train";
+    const fromTokens = tokenize(fromstate);
+    const toTokens = tokenize(tostate);
 
-    const travels = await TravelModel.find({
-      "fromAddress.state": fromstate,
-      "toAddress.state": tostate,
-      expectedStartDate: { $gte: travelDate, $lt: nextDay },
-      status: "upcoming",
-      travelerId: { $ne: currentUserId },
-      modeOfTravel: travelMode,
-    });
+    const fromRegexes = fromTokens.map((t) => new RegExp(t, "i"));
+    const toRegexes = toTokens.map((t) => new RegExp(t, "i"));
 
-    if (!travels || travels.length === 0) {
+    // Date range (whole day)
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(startOfDay.getDate() + 1);
+
+    // Default travel mode (optional param)
+    const travelMode = modeOfTravel || undefined;
+
+    logger.info(
+      `🔍 Locating travels from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()} ${
+        travelMode ? `(mode: ${travelMode})` : ""
+      }`
+    );
+
+    const query: any = {
+      $and: [
+        {
+          $or: [
+            { "fromAddress.state": { $in: fromRegexes } },
+            { "fromAddress.city": { $in: fromRegexes } },
+            { "fromAddress.street": { $in: fromRegexes } },
+          ],
+        },
+        {
+          $or: [
+            { "toAddress.state": { $in: toRegexes } },
+            { "toAddress.city": { $in: toRegexes } },
+            { "toAddress.street": { $in: toRegexes } },
+          ],
+        },
+        {
+          expectedStartDate: { $gte: startOfDay, $lt: endOfDay },
+          status: "upcoming",
+          travelerId: { $ne: currentUserId },
+        },
+      ],
+    };
+
+    if (travelMode) query.$and.push({ modeOfTravel: travelMode });
+
+    const travels = await TravelModel.find(query)
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    if (!travels.length) {
+      logger.info(
+        `❌ No travels found for ${fromstate} → ${tostate} on ${date} ${
+          travelMode ? `(${travelMode})` : ""
+        }`
+      );
       return res.status(404).json({ message: "No travels found", travels: [] });
     }
 
     return res
       .status(200)
       .json({ message: "Travels fetched successfully", travels });
-  } catch (error) {
-    console.error("Error locating travel:", error);
-    res
-      .status(500)
-      .json({ message: "Internal server error while locating travel" });
+  } catch (error: any) {
+    logger.error("❌ Error locating travel:", error);
+    return res.status(500).json({
+      message: "Internal server error while locating travel",
+      error: error instanceof Error ? error.message : error,
+    });
   }
 };
 
