@@ -15,13 +15,13 @@ interface Notification {
 
 const notificationSchema = new Schema<Notification>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     title: { type: String, required: true },
     message: { type: String, required: true },
     isRead: { type: Boolean, default: false },
-    relatedConsignmentId: { type: Schema.Types.ObjectId, ref: "Consignments" },
-    requestId:{type:Schema.Types.ObjectId,ref:"CarryRequests"},
-    relatedTravelId: { type: Schema.Types.ObjectId, ref: "Travels" },
+    relatedConsignmentId: { type: Schema.Types.ObjectId, ref: "Consignment" },
+    requestId: { type: Schema.Types.ObjectId, ref: "CarryRequest" },
+    relatedTravelId: { type: Schema.Types.ObjectId, ref: "Travel" },
     relatedPaymentId: { type: Schema.Types.ObjectId, ref: "Payments" },
   },
   { timestamps: true }

@@ -5,7 +5,12 @@ export interface CarryRequestPayload {
   consignmentId: Types.ObjectId | string;
   travellerId: Types.ObjectId | string;
   requestedBy: Types.ObjectId | string; // could be sender or traveller
-  status: "pending" | "accepted" | "rejected";
+  status:
+    | "pending"
+    | "accepted_pending_payment"
+    | "accepted"
+    | "rejected"
+    | "expired";
   senderPayAmount: number;
   travellerEarning: number;
 }
@@ -29,7 +34,15 @@ export interface PaymentPayload {
   travelId: Types.ObjectId | string;
   amount: number;
   payerId: Types.ObjectId | string;
-  status: "pending" | "completed" | "failed";
+  status: "pending" | "completed_pending_webhook" | "completed" | "failed";
+}
+
+export interface PaymentRequestPayload {
+  consignmentId: Types.ObjectId | string;
+  carryRequestId: Types.ObjectId | string;
+  travelId: Types.ObjectId | string;
+  travellerId: Types.ObjectId | string;
+  amount: number;
 }
 
 export interface TravelConsignmentStatusPayload {

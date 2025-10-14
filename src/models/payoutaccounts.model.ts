@@ -12,7 +12,7 @@ interface PayoutAccounts {
 
 const payoutAccountsSchema = new Schema<PayoutAccounts>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "Users", required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     razorpayContactId: { type: String, required: true },
     razorpayFundAccountId: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },

@@ -1,6 +1,6 @@
 import type { Response } from "express";
 import type { JwtPayload } from "jsonwebtoken";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
 import type { AuthRequest } from "../../middlewares/authMiddleware.js";
@@ -9,6 +9,7 @@ import Earning from "../../models/earning.model.js";
 import Payment from "../../models/payment.model.js";
 import PayoutAccountsModel from "../../models/payoutaccounts.model.js";
 import { TravelModel } from "../../models/travel.model.js";
+import TravelConsignments from "../../models/travelconsignments.model.js";
 import { User } from "../../models/user.model";
 import {
   createBankFundAccount,
@@ -17,6 +18,50 @@ import {
   createVpaFundAccount,
   validateVpa,
 } from "../../services/razorpay.service.js";
+
+interface TravelConsignmentsPopulated
+  extends Omit<TravelConsignments, "travelId"> {
+  travelId: {
+    _id: Types.ObjectId;
+    travelerId: {
+      _id: Types.ObjectId;
+      firstName: string;
+      lastName: string;
+      rating?: number;
+      reviewCount?: number;
+      completedTrips?: number;
+    };
+  };
+}
+
+type Coordinates = {
+  type: string;
+  coordinates: [number, number];
+};
+
+const isPopulatedConsignment = (
+  consignment: unknown
+): consignment is {
+  _id: Types.ObjectId;
+  fromCoordinates?: Coordinates;
+  toCoordinates?: Coordinates;
+  [key: string]: unknown;
+} => {
+  return (
+    !!consignment &&
+    typeof consignment === "object" &&
+    "_id" in consignment &&
+    !("_bsontype" in consignment) // ObjectId check (avoids ObjectId masquerading)
+  );
+};
+
+const formatCoordinates = (coords?: Coordinates) => {
+  if (!coords || !Array.isArray(coords.coordinates)) return null;
+  return {
+    latitude: coords.coordinates[1],
+    longitude: coords.coordinates[0],
+  };
+};
 
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -28,8 +73,9 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
     }
 
     const user = await User.findById(userId).select(
-      "-__v -createdAt -updatedAt -_id"
+      "-__v -createdAt -updatedAt"
     );
+
     if (!user) {
       return res
         .status(CODES.NOT_FOUND)
@@ -59,18 +105,107 @@ export const getTravelAndConsignment = async (
         .status(CODES.UNAUTHORIZED)
         .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
-    const travels = await TravelModel.find({ travelerId: userId }).sort({
-      createdAt: -1,
-    });
-    const consignments = await ConsignmentModel.find({ senderId: userId }).sort(
-      { createdAt: -1 }
+
+    // Fetch user's travels
+    const travels = await TravelModel.find({ travelerId: userId })
+      .populate(
+        "travelerId",
+        "firstName lastName email rating reviewCount tripsCompleted profilePictureUrl isVerified phoneNumber"
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // For each travel, attach consignments linked through TravelConsignments
+    const enrichedTravels = await Promise.all(
+      travels.map(async (travel) => {
+        const consignmentsLinked = await TravelConsignments.find({
+          travelId: travel._id,
+        })
+          .populate("consignmentId")
+          .lean();
+
+        // Format coordinates for travel
+        const formattedTravel = {
+          ...travel,
+          fromCoordinates: formatCoordinates(
+            travel.fromCoordinates as Coordinates
+          ),
+          toCoordinates: formatCoordinates(travel.toCoordinates as Coordinates),
+          consignments: consignmentsLinked
+            .map((t) => {
+              const consignment = t.consignmentId;
+
+              if (!isPopulatedConsignment(consignment)) return null;
+
+              return {
+                ...consignment,
+                fromCoordinates: formatCoordinates(consignment.fromCoordinates),
+                toCoordinates: formatCoordinates(consignment.toCoordinates),
+              };
+            })
+            .filter(Boolean),
+        };
+
+        return formattedTravel;
+      })
     );
+
+    // Get all consignments created by this user (sender)
+    const consignments = await ConsignmentModel.find({ senderId: userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log("connnn here => ", consignments);
+
+    //  For each consignment, check if it’s assigned to any traveler
+    const enrichedConsignments = await Promise.all(
+      consignments.map(async (consignment) => {
+        const tc = await TravelConsignments.findOne({
+          consignmentId: consignment._id,
+        })
+          .populate({
+            path: "travelId",
+            populate: {
+              path: "travelerId",
+              select:
+                "firstName lastName email rating reviewCount tripsCompleted profilePictureUrl isVerified phoneNumber",
+            },
+          })
+          .lean();
+
+        const assignedTraveller =
+          tc?.travelId &&
+          typeof tc.travelId === "object" &&
+          "travelerId" in tc.travelId &&
+          tc.travelId.travelerId
+            ? {
+                _id: (tc.travelId.travelerId as any)._id,
+                name: `${(tc.travelId.travelerId as any).firstName} ${
+                  (tc.travelId.travelerId as any).lastName
+                }`,
+                travelId: (tc.travelId as any)._id,
+              }
+            : null;
+
+        return {
+          ...consignment,
+          fromCoordinates: formatCoordinates(
+            consignment.fromCoordinates as Coordinates
+          ),
+          toCoordinates: formatCoordinates(
+            consignment.toCoordinates as Coordinates
+          ),
+          assignedTraveller,
+        };
+      })
+    );
+
     return res
       .status(CODES.OK)
       .json(
         sendResponse(
           CODES.OK,
-          { travels, consignments },
+          { travels: enrichedTravels, consignments: enrichedConsignments },
           "Travel and Consignment data fetched successfully"
         )
       );
