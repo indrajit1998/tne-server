@@ -21,7 +21,7 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       modeOfTravel,
     } = req.body;
 
-    // Validate ObjectIds first
+    // 1 Validate ObjectIds
     if (
       !mongoose.Types.ObjectId.isValid(fromAddressId) ||
       !mongoose.Types.ObjectId.isValid(toAddressId)
@@ -29,6 +29,7 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid address format" });
     }
 
+    // 2 Fetch addresses
     const fromAddressObj = await Address.findById(fromAddressId);
     const toAddressObj = await Address.findById(toAddressId);
 
@@ -36,6 +37,21 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid address IDs" });
     }
 
+    // 3 Validate dates
+    const startTime = new Date(expectedStartDate).getTime();
+    const endTime = new Date(expectedEndDate).getTime();
+
+    if (isNaN(startTime) || isNaN(endTime)) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    if (endTime < startTime) {
+      return res
+        .status(400)
+        .json({ message: "Expected end date cannot be before start date" });
+    }
+
+    // 4 Prepare addresses
     const fromAddress = {
       street: fromAddressObj.street,
       city: fromAddressObj.city,
@@ -56,8 +72,13 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       flatNo: toAddressObj.flatNo,
     };
 
+    // 5 Calculate distance
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
+
+    // 6 Calculate duration safely
     const durationOfTravel = formatDuration(expectedStartDate, expectedEndDate);
+
+    // 7 Create travel
     const travel = await TravelModel.create({
       travelerId,
       fromAddress,
@@ -72,13 +93,15 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       durationOfStay,
       durationOfTravel,
       status: "upcoming",
-      modeOfTravel, // ✅ now included
+      modeOfTravel,
     });
 
-    res.status(201).json({ message: "Travel created successfully", travel });
+    return res
+      .status(201)
+      .json({ message: "Travel created successfully", travel });
   } catch (error: any) {
     console.error("Error creating travel:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 

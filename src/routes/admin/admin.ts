@@ -5,7 +5,7 @@ import { consignmentStats, getEarningsStats, requestStats, travelStats ,getDashb
 import { getUsersList, getUserDetails, deleteUser } from "../../controllers/admin/userManagement";
 import { getPrices, managePrices } from "../../controllers/admin/priceManagement";
 import { addAdminUser, deleteAdminUser, editAdminUser, getAdminUsers,getAdminUserById } from "../../controllers/admin/management";
-import { getSenderReport, getTravellerReport } from "../../controllers/admin/report";
+import { getConsolidateConsignment, getSenderReport, getTravellerReport } from "../../controllers/admin/report";
 import {getFeedback, getSupportContacts} from "../../controllers/admin/feedbackAndContacts";
 
 const adminRouts = Router();
@@ -37,7 +37,8 @@ adminRouts.patch("/editAdminUser/:id", editAdminUser)
 adminRouts.post("/addAdminUser", addAdminUser)
 
 //Reports
-adminRouts.get("/getTravellerReport", getTravellerReport)
+adminRouts.get("/getTravellerReport",  getTravellerReport)
+adminRouts.get("/getConsolidateConsignment", getConsolidateConsignment)
 adminRouts.get("/getSenderReport", getSenderReport)
 
 //Dashboard Stats

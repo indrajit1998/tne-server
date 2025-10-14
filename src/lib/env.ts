@@ -6,6 +6,7 @@ const envSchema = z.object({
     .default("development"),
   PORT: z.string().default("4000"),
   APP_NAME: z.string().default("tne-server"),
+  APP_URL: z.string().default("http://localhost:3000"), //TODO: Add proper url
   LOGTAIL_SOURCE_TOKEN: z.string().optional(),
   DATABASE_URL: z.url(),
   SEND_MESSAGE_API_KEY: z.string(),
