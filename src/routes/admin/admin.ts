@@ -5,7 +5,7 @@ import { consignmentStats, getEarningsStats, requestStats, travelStats ,getDashb
 import { getUsersList, getUserDetails, deleteUser } from "../../controllers/admin/userManagement";
 import { getPrices, managePrices } from "../../controllers/admin/priceManagement";
 import { addAdminUser, deleteAdminUser, editAdminUser, getAdminUsers,getAdminUserById } from "../../controllers/admin/management";
-import { getConsolidateConsignment, getSenderReport, getTravellerReport } from "../../controllers/admin/report";
+import { getConsolidateConsignment, getSalesReport, getSenderReport, getTravellerReport } from "../../controllers/admin/report";
 import {getFeedback, getSupportContacts} from "../../controllers/admin/feedbackAndContacts";
 
 const adminRouts = Router();
@@ -43,6 +43,9 @@ adminRouts.get("/getSenderReport", getSenderReport)
 
 //Dashboard Stats
 adminRouts.get("/getDashboardStats", getDashboardStats)
+
+//Sales Report
+adminRouts.get("/getSalesReport", getSalesReport);
 
 //Feedback and Contacts
 adminRouts.get("/getFeedback", getFeedback)
