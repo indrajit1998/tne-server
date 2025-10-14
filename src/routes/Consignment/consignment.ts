@@ -23,6 +23,7 @@ consignmentRouter.post(
   validate(createConsignmentSchema),
   createConsignment
 );
+
 consignmentRouter.get("/getConsignments", isAuthMiddleware, getConsignments);
 
 consignmentRouter.get(
@@ -30,6 +31,7 @@ consignmentRouter.get(
   isAuthMiddleware,
   locateConsignment
 );
+
 consignmentRouter.get(
   "/locateConsignmentByid/:id",
   isAuthMiddleware,
@@ -47,21 +49,25 @@ consignmentRouter.post(
   isAuthMiddleware,
   carryRequestBySender
 );
+
 consignmentRouter.post(
   "/carryRequestByTraveller",
   isAuthMiddleware,
   carryRequestByTraveller
 );
+
 consignmentRouter.patch(
   "/acceptCarryRequest",
   isAuthMiddleware,
   acceptCarryRequest
 );
+
 consignmentRouter.patch(
   "/rejectCarryRequest",
   isAuthMiddleware,
   rejectCarryRequest
 );
+
 consignmentRouter.patch(
   "/updateTravelConsignmentStatus/:travelConsignmentId",
   isAuthMiddleware,

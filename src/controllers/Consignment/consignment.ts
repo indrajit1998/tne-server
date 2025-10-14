@@ -34,6 +34,49 @@ import {
 } from "../../socket/events";
 import { notificationHelper } from "../Notifications/notification";
 
+// helper type for GeoJSON coords
+interface GeoPoint {
+  type: "Point";
+  coordinates: [number, number];
+}
+
+// helper for populated consignment
+interface PopulatedConsignment {
+  _id: string;
+  fromAddress: Record<string, any>;
+  toAddress: Record<string, any>;
+  fromCoordinates?: GeoPoint;
+  toCoordinates?: GeoPoint;
+  distance?: string;
+  weight?: number;
+  weightUnit?: string;
+  description?: string;
+  category?: string;
+  subCategory?: string;
+  images?: string[];
+  senderId?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    profilePicture?: string;
+    email?: string;
+    phoneNumber?: string;
+  };
+}
+
+// helper for populated travel
+interface PopulatedTravel {
+  _id: string;
+  fromAddress: Record<string, any>;
+  toAddress: Record<string, any>;
+  fromCoordinates?: GeoPoint;
+  toCoordinates?: GeoPoint;
+  modeOfTravel?: string;
+  travelDate?: Date;
+  availableWeight?: number;
+  description?: string;
+}
+
 export const createConsignment = async (req: AuthRequest, res: Response) => {
   try {
     const senderId = req.user;
@@ -313,7 +356,7 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
         path: "consignmentId",
         model: ConsignmentModel,
         select:
-          "fromAddress toAddress distance weight weightUnit description category subCategory images senderId",
+          "fromAddress toAddress fromCoordinates toCoordinates distance weight weightUnit description category subCategory images senderId",
         populate: {
           path: "senderId",
           model: User,
@@ -326,9 +369,52 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "Carry request not found" });
     }
 
+    const formatCoordinates = (coords?: GeoPoint) => {
+      if (!coords || !Array.isArray(coords.coordinates)) return null;
+      return {
+        latitude: coords.coordinates[1],
+        longitude: coords.coordinates[0],
+      };
+    };
+
+    function isPopulatedConsignment(obj: unknown): obj is PopulatedConsignment {
+      return !!obj && typeof obj === "object" && "fromAddress" in obj;
+    }
+
+    const consignment = isPopulatedConsignment(carryRequest.consignmentId)
+      ? {
+          ...carryRequest.consignmentId,
+          fromCoordinates: formatCoordinates(
+            carryRequest.consignmentId.fromCoordinates
+          ),
+          toCoordinates: formatCoordinates(
+            carryRequest.consignmentId.toCoordinates
+          ),
+        }
+      : null;
+
+    // related travel fetch + format
+    const relatedTravelDoc = carryRequest.travellerId
+      ? await TravelModel.findOne({
+          travelerId: carryRequest.travellerId._id,
+        })
+          .select(
+            "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate vehicleNumber durationOfStay durationOfTravel status modeOfTravel travelDate availableWeight description"
+          )
+          .lean()
+      : null;
+
+    const relatedTravel = relatedTravelDoc
+      ? {
+          ...relatedTravelDoc,
+          fromCoordinates: formatCoordinates(relatedTravelDoc.fromCoordinates),
+          toCoordinates: formatCoordinates(relatedTravelDoc.toCoordinates),
+        }
+      : null;
+
     const formattedCarryRequest = {
       _id: carryRequest._id,
-      consignment: carryRequest.consignmentId || null,
+      consignment,
       traveller: carryRequest.travellerId || null,
       requestedByUser: carryRequest.requestedBy || null,
       status: carryRequest.status,
@@ -336,18 +422,8 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
       travellerEarning: carryRequest.travellerEarning,
       createdAt: carryRequest.createdAt,
       updatedAt: carryRequest.updatedAt,
+      relatedTravel,
     };
-
-    // fetch related travel if travellerId matches
-    const relatedTravel = carryRequest.travellerId
-      ? await TravelModel.findOne({
-          travelerId: carryRequest.travellerId._id,
-        })
-          .select(
-            "fromAddress toAddress modeOfTravel travelDate availableWeight description"
-          )
-          .lean()
-      : null;
 
     logger.info(
       `📦 Carry request fetched by ID ${requestId} for user ${userId}`
@@ -355,7 +431,7 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
 
     return res.status(200).json({
       message: "Carry request fetched successfully",
-      carryRequest: { ...formattedCarryRequest, relatedTravel },
+      carryRequest: formattedCarryRequest,
     });
   } catch (error: any) {
     logger.error("❌ Error fetching carry request by ID:", error);
@@ -427,6 +503,7 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       travellerId: travel.travelerId,
       requestedBy: consignmentSender,
       status: "pending",
+      travelId: travelId,
       senderPayAmount: senderPay,
       travellerEarning: travellerEarning,
     });
@@ -542,6 +619,7 @@ export const carryRequestByTraveller = async (
       consignmentId: consignmentId,
       travellerId: travellerId,
       requestedBy: travellerId,
+      travelId: travelId,
       status: "pending",
       senderPayAmount: senderPay,
       travellerEarning: travellerEarning,

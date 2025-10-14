@@ -4,6 +4,7 @@ interface CarryRequest {
   consignmentId: Types.ObjectId;
   travellerId: Types.ObjectId;
   requestedBy: Types.ObjectId;
+  travelId: Types.ObjectId;
   status:
     | "pending"
     | "accepted_pending_payment"
@@ -26,6 +27,11 @@ const carryRequestSchema = new Schema<CarryRequest>(
     },
     travellerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     requestedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    travelId: {
+      type: Schema.Types.ObjectId,
+      ref: "Travel",
+      required: true,
+    },
     status: {
       type: String,
       enum: [

@@ -118,6 +118,7 @@ export async function generateOtp(
     } else {
       // In dev, skip api call, log OTP for testing
       console.log(`🔹 Dev mode: OTP for ${type} is ${otp}. SMS not sent.`);
+      return { otp };
     }
   } catch (error) {
     console.error("❌ Error sending SMS:", error);

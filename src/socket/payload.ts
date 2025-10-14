@@ -34,7 +34,7 @@ export interface PaymentPayload {
   travelId: Types.ObjectId | string;
   amount: number;
   payerId: Types.ObjectId | string;
-  status: "pending" | "completed" | "failed";
+  status: "pending" | "completed_pending_webhook" | "completed" | "failed";
 }
 
 export interface PaymentRequestPayload {

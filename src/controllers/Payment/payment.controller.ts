@@ -9,6 +9,7 @@ import type { AuthRequest } from "../../middlewares/authMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
 import ConsignmentModel from "../../models/consignment.model";
 import Earning from "../../models/earning.model";
+import FareConfigModel from "../../models/fareconfig.model";
 import Payment from "../../models/payment.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
@@ -25,16 +26,11 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
     if (!carryRequest)
       return res.status(404).json({ message: "Carry request not found" });
 
-    const travelConsignment = await TravelConsignments.findOne({
-      consignmentId: carryRequest.consignmentId,
-      travellerId: carryRequest.travellerId,
-      status: "accepted",
-    });
-
-    if (!travelConsignment) {
-      return res
-        .status(404)
-        .json({ message: "Travel for this carry request not found" });
+    if (carryRequest.status !== "accepted_pending_payment") {
+      return res.status(400).json({
+        message:
+          "Carry request must be accepted before payment can be initiated",
+      });
     }
 
     const existingPayment = await Payment.findOne({
@@ -45,27 +41,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Payment already initiated" });
     }
 
-    session.startTransaction(); // Starting transaction here
-
-    // Create Payment record in pending state
-    const [paymentDoc] = await Payment.create(
-      [
-        {
-          consignmentId: carryRequest.consignmentId,
-          travelId: travelConsignment.travelId,
-          userId: carryRequest.requestedBy, // sender
-          type: "sender_pay",
-          amount: carryRequest.senderPayAmount,
-          status: "pending",
-          carryRequestId: carryRequest._id,
-        },
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
-
-    // Create Razorpay order
+    // Create Razorpay order FIRST (before transaction)
     const orderResponse = await axios.post(
       "https://api.razorpay.com/v1/orders",
       {
@@ -82,12 +58,32 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       }
     );
 
+    session.startTransaction();
+
+    // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
+
+    //  Handle the array destructuring properly
+    const createdPayments = await Payment.create(
+      [
+        {
+          consignmentId: carryRequest.consignmentId,
+          travelId: carryRequest.travelId,
+          userId: carryRequest.requestedBy,
+          type: "sender_pay",
+          amount: carryRequest.senderPayAmount,
+          status: "pending",
+          razorpayOrderId: orderResponse.data.id,
+        },
+      ],
+      { session }
+    );
+
+    const paymentDoc = createdPayments[0];
     if (!paymentDoc) {
       throw new Error("Failed to create payment record");
     }
 
-    paymentDoc.razorpayOrderId = orderResponse.data.id;
-    await paymentDoc.save();
+    await session.commitTransaction();
 
     return res.status(200).json({
       message: "Payment initiated",
@@ -109,8 +105,6 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
 
   try {
-    session.startTransaction();
-
     const { paymentId, razorpayPaymentId, razorpaySignature } = req.body;
 
     const payment = await Payment.findById(paymentId);
@@ -129,20 +123,20 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
 
     session.startTransaction();
 
-    payment.status = "completed";
+    payment.status = "completed_pending_webhook";
     payment.razorpayPaymentId = razorpayPaymentId;
     await payment.save({ session });
 
     // Optionally, update CarryRequest status to 'accepted' after successful payment
-    const carryRequest = await CarryRequest.findOne({
-      consignmentId: payment.consignmentId,
-      status: "accepted_pending_payment",
-    }).session(session);
+    // const carryRequest = await CarryRequest.findOne({
+    //   consignmentId: payment.consignmentId,
+    //   status: "accepted_pending_payment",
+    // }).session(session);
 
-    if (carryRequest) {
-      carryRequest.status = "accepted";
-      await carryRequest.save({ session });
-    }
+    // if (carryRequest) {
+    //   carryRequest.status = "accepted";
+    //   await carryRequest.save({ session });
+    // }
 
     await session.commitTransaction();
 
@@ -173,7 +167,127 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
     //   });
     // }
 
-    return res.status(200).json({ message: "Payment verified and completed" });
+    // ==============================================
+    // TODO: REMOVE THIS IN PRODUCTION !!!!
+
+    // Update CarryRequest
+    // const carryRequest = await CarryRequest.findOneAndUpdate(
+    //   {
+    //     consignmentId: payment.consignmentId,
+    //     status: "accepted_pending_payment",
+    //   },
+    //   { status: "accepted" },
+    //   { new: true, session }
+    // );
+    // if (!carryRequest) throw new Error("CarryRequest not found");
+
+    // // Calculate platform commission
+    // const fareConfig = await FareConfigModel.findOne()
+    //   .sort({ createdAt: -1 })
+    //   .lean();
+    // if (!fareConfig) throw new Error("Fare configuration not found");
+
+    // const { margin } = fareConfig; // percentage margin (e.g., 15)
+
+    // const platformCommission = Number(
+    //   ((carryRequest.senderPayAmount * margin) / 100).toFixed(2)
+    // );
+    // //        // Create TravelConsignment if not exists
+    // const existingTravelConsignment = await TravelConsignments.findOne({
+    //   paymentId: payment._id,
+    // }).session(session);
+
+    // if (!existingTravelConsignment) {
+    //   const consignment = await ConsignmentModel.findById(payment.consignmentId)
+    //     .select("receiverPhone receiverName")
+    //     .lean()
+    //     .session(session);
+    //   if (!consignment) throw new Error("consignment not found");
+
+    //   const sender = await User.findById(carryRequest.requestedBy).session(
+    //     session
+    //   );
+    //   const receiver = consignment;
+
+    //   if (!sender || !receiver) throw new Error("Sender or receiver not found");
+
+    //   // Generate OTPs now
+    //   const [senderOTP, receiverOTP] = await Promise.all([
+    //     generateOtp(sender.phoneNumber, "sender"),
+    //     generateOtp(receiver.receiverPhone, "receiver"),
+    //   ]);
+
+    //   // Create TravelConsignment
+    //   await TravelConsignments.create(
+    //     [
+    //       {
+    //         travelId: payment.travelId,
+    //         consignmentId: payment.consignmentId,
+    //         senderOTP,
+    //         receiverOTP,
+    //         status: "to_handover",
+    //         travellerEarning: carryRequest.travellerEarning,
+    //         senderToPay: carryRequest.senderPayAmount,
+    //         platformCommission,
+    //         paymentId: payment._id,
+    //       },
+    //     ],
+    //     { session }
+    //   );
+
+    //   // Create traveller earning
+    //   await Earning.create(
+    //     [
+    //       {
+    //         userId: carryRequest.travellerId,
+    //         travelId: payment.travelId,
+    //         consignmentId: payment.consignmentId,
+    //         amount: carryRequest.travellerEarning,
+    //         status: "pending",
+    //         is_withdrawn: false,
+    //       },
+    //     ],
+    //     { session }
+    //   );
+
+    //   // Record platform commission earning (optional)
+    //   await Earning.create(
+    //     [
+    //       {
+    //         userId: null, // platform/system
+    //         travelId: payment.travelId,
+    //         consignmentId: payment.consignmentId,
+    //         amount: platformCommission,
+    //         status: "pending",
+    //         is_withdrawn: false,
+    //         type: "platform_commission",
+    //       },
+    //     ],
+    //     { session }
+    //   );
+
+    //   // Save commission record as Payment too (for financial tracking)
+    //   const platformCommisionPayment = await Payment.create(
+    //     [
+    //       {
+    //         userId: null, // Platform
+    //         consignmentId: payment.consignmentId,
+    //         travelId: payment.travelId,
+    //         type: "platform_commission",
+    //         amount: platformCommission,
+    //         status: "completed",
+    //       },
+    //     ],
+    //     { session }
+    //   );
+    // }
+
+    // =========================================
+
+    return res.status(200).json({
+      message: "Payment verified, awaiting confirmation from Razorpay webhook",
+      paymentId: payment._id,
+    });
   } catch (error: any) {
     await session.abortTransaction();
     logger.error("Capture payment error:", error);
@@ -197,20 +311,22 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
       .digest("hex");
 
     if (signature !== expectedSignature) {
-      logger.warn("Razorpay webhook signature mismatch");
+      logger.warn("❌ Razorpay webhook signature mismatch");
       return res.status(400).send("Invalid signature");
     }
 
     const event = req.body.event;
     const payload = req.body.payload;
 
-    logger.info(`Razorpay webhook received: ${event}`);
+    logger.info(`📩 Razorpay webhook received: ${event}`);
 
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
       if (event === "payment.captured") {
+        console.log("ENTERING PAYMENT.CAPTURED...");
+
         const { id: razorpayPaymentId, order_id: razorpayOrderId } =
           payload.payment.entity;
 
@@ -238,7 +354,10 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
         payment.razorpayPaymentId = razorpayPaymentId;
         await payment.save({ session });
 
+        // TODO: UNCOMMENT IN PROD
+
         // Update CarryRequest
+        console.log("Updating CarryRequest...");
         const carryRequest = await CarryRequest.findOneAndUpdate(
           {
             consignmentId: payment.consignmentId,
@@ -248,13 +367,31 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           { new: true, session }
         );
         if (!carryRequest) throw new Error("CarryRequest not found");
+        console.log("Updated CarryRequest...");
 
-        // Create TravelConsignment if not exists
+        // // Calculate platform commission
+        const fareConfig = await FareConfigModel.findOne()
+          .sort({ createdAt: -1 })
+          .lean();
+        if (!fareConfig) throw new Error("Fare configuration not found");
+
+        const { margin } = fareConfig; // percentage margin (e.g., 15)
+
+        const platformCommission = Number(
+          ((carryRequest.senderPayAmount * margin) / 100).toFixed(2)
+        );
+
+        // // Create TravelConsignment if not exists
+        console.log("Searching existing TravelConsignment...");
         const existingTravelConsignment = await TravelConsignments.findOne({
           paymentId: payment._id,
         }).session(session);
+        console.log("Done with searching existing TravelConsignment...");
 
         if (!existingTravelConsignment) {
+          console.log(
+            "Inside !existingTravelConsignment, searching for consignment..."
+          );
           const consignment = await ConsignmentModel.findById(
             payment.consignmentId
           )
@@ -262,7 +399,13 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             .lean()
             .session(session);
           if (!consignment) throw new Error("consignment not found");
+          console.log(
+            "Inside !existingTravelConsignment, done searching for consignment..."
+          );
 
+          console.log(
+            "Inside !existingTravelConsignment, searching for sender..."
+          );
           const sender = await User.findById(carryRequest.requestedBy).session(
             session
           );
@@ -272,28 +415,54 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             throw new Error("Sender or receiver not found");
 
           // Generate OTPs now
-          const [senderOTP, receiverOTP] = await Promise.all([
+          const [senderOTPObj, receiverOTPObj] = await Promise.all([
             generateOtp(sender.phoneNumber, "sender"),
             generateOtp(receiver.receiverPhone, "receiver"),
           ]);
 
-          // Create TravelConsignment
-          await TravelConsignments.create(
-            [
-              {
-                travelId: payment.travelId,
-                consignmentId: payment.consignmentId,
-                senderOTP,
-                receiverOTP,
-                status: "to_handover",
-                travellerEarning: carryRequest.travellerEarning,
-                senderToPay: carryRequest.senderPayAmount,
-                paymentId: payment._id,
-              },
-            ],
-            { session }
+          const senderOTP = senderOTPObj?.otp ?? "000000"; // fallback OTP
+          const receiverOTP = receiverOTPObj?.otp ?? "000000"; // fallback OTP
+
+          console.log(
+            `Generated OTPs - sender: ${senderOTP}, receiver: ${receiverOTP}`
           );
 
+          console.log(
+            "Inside !existingTravelConsignment, done searching for sender, created otps..."
+          );
+
+          console.log(
+            "Inside !existingTravelConsignment, Creating TravelConsignment..."
+          );
+          // Create TravelConsignment
+          try {
+            await TravelConsignments.create(
+              [
+                {
+                  travelId: payment.travelId,
+                  consignmentId: payment.consignmentId,
+                  senderOTP,
+                  receiverOTP,
+                  status: "to_handover",
+                  travellerEarning: carryRequest.travellerEarning,
+                  senderToPay: carryRequest.senderPayAmount,
+                  platformCommission,
+                  paymentId: payment._id,
+                },
+              ],
+              { session }
+            );
+          } catch (err) {
+            console.error("❌ Failed to create TravelConsignment:", err);
+            throw err;
+          }
+          console.log(
+            "Inside !existingTravelConsignment, done Creating TravelConsignment..."
+          );
+
+          console.log(
+            "Inside !existingTravelConsignment, Creating traveller earning..."
+          );
           // Create traveller earning
           await Earning.create(
             [
@@ -308,26 +477,90 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             ],
             { session }
           );
-        }
+          console.log(
+            "Inside !existingTravelConsignment, done Creating traveller earning..."
+          );
 
-        // TODO: Platform commission logic
+          console.log(
+            "Inside !existingTravelConsignment, Creating platform commission earning..."
+          );
+          // Record platform commission earning (optional)
+        }
+        try {
+          await Earning.create(
+            [
+              {
+                userId: null, // platform/system
+                travelId: payment.travelId,
+                consignmentId: payment.consignmentId,
+                amount: platformCommission,
+                status: "pending",
+                is_withdrawn: false,
+                type: "platform_commission",
+              },
+            ],
+            { session }
+          );
+        } catch (error) {
+          console.error("❌ Failed to create Earning record:", error);
+        }
+        console.log(
+          "Inside !existingTravelConsignment, done creating platform commission earning..."
+        );
+
+        console.log(
+          "Inside !existingTravelConsignment, Saving commission record as Payment..."
+        );
+        // Save commission record as Payment too (for financial tracking)
+        // try {
+        //   const platformCommisionPayment = await Payment.create(
+        //     [
+        //       {
+        //         userId: null, // Platform
+        //         consignmentId: payment.consignmentId,
+        //         travelId: payment.travelId,
+        //         type: "platform_commission",
+        //         amount: platformCommission,
+        //         status: "completed",
+        //       },
+        //     ],
+        //     { session }
+        //   );
+        // } catch (error) {
+        //   console.error(
+        //     "❌ Failed to saving commission record as Payment:",
+        //     error
+        //   );
+        // }
+        console.log(
+          "Inside !existingTravelConsignment, done Saving commission record as Payment..."
+        );
 
         await session.commitTransaction();
+
+        console.log("After session.commitTransaction()...");
 
         // Update CarryRequest status
         // await CarryRequest.findByIdAndUpdate(payment.consignmentId, {
         //   status: "accepted",
         // }).session(session);
 
+        // TODO: UNCOMMENT IN PROD
         // TODO: Emit socket events
         await emitPaymentSuccess(carryRequest.travellerId.toString(), {
           paymentId: payment._id.toString(),
-          payerId: payment.userId, //TODO: CHEECK IF CORRECT OR NOT
+          payerId: payment.userId,
           consignmentId: payment.consignmentId.toString(),
           travelId: payment.travelId.toString(),
           amount: payment.amount,
           status: "completed",
         });
+
+        // TODO: UNCOMMENT IN PROD
+        logger.info(
+          `✅ Payment processed & commission recorded: ₹${platformCommission}`
+        );
+        // logger.info(`✅ Payment processed from webhook`);
 
         // Notify both sender and traveller about CarryRequest update
         // await emitCarryRequestUpdate(carryRequest.travellerId.toString(), {
@@ -344,9 +577,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
         //   status: "accepted",
         // });
 
-        // TODO: platform commission
-
-        logger.info(`Payment completed for order ${razorpayOrderId}`);
+        logger.info(`✅ Payment completed and processed: ${razorpayOrderId}`);
       } else if (event === "payment.failed") {
         const {
           order_id: razorpayOrderId,
@@ -355,11 +586,14 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           error_description,
         } = payload.payment.entity;
 
+        logger.info("Webhook order_id:", razorpayOrderId);
+        logger.info("Looking for payment in DB...");
         const payment = await Payment.findOne({ razorpayOrderId }).session(
           session
         );
         if (!payment)
           throw new Error("Payment record not found for failed webhook");
+        console.log("Found payment:", payment);
 
         payment.status = "failed";
         payment.razorpayPaymentId = razorpayPaymentId;
@@ -383,10 +617,10 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           });
         }
 
-        logger.warn(`Payment failed for order ${razorpayOrderId}`);
+        logger.warn(`⚠️ Payment failed for order ${razorpayOrderId}`);
       }
 
-      res.status(200).send("Webhook received");
+      return res.status(200).send("Webhook processed successfully");
     } catch (err: any) {
       await session.abortTransaction();
       logger.error("Webhook processing error:", err);

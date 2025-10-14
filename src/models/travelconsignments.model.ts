@@ -19,10 +19,10 @@ const travelConsignmentsSchema = new Schema<TravelConsignments>(
   {
     consignmentId: {
       type: Schema.Types.ObjectId,
-      ref: "Consignments",
+      ref: "Consignment",
       required: true,
     },
-    travelId: { type: Schema.Types.ObjectId, ref: "Travels", required: true },
+    travelId: { type: Schema.Types.ObjectId, ref: "Travel", required: true },
     senderOTP: { type: String, required: true },
     receiverOTP: { type: String, required: true },
     status: {
