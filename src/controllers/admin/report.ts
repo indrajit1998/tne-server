@@ -1,6 +1,6 @@
+import type { Response } from "express";
 import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
-import type { Response } from "express";
 import ConsignmentModel from "../../models/consignment.model";
 
 export const getTravellerReport = async (req: AdminAuthRequest, res: Response) => {
@@ -66,6 +66,41 @@ export const getTravellerReport = async (req: AdminAuthRequest, res: Response) =
     res.status(500).json({
       success: false,
       message: "Internal Server Error while fetching traveller stats",
+    });
+  }
+};
+
+
+
+
+export const getConsolidateConsignment = async (req: AdminAuthRequest, res: Response) => {
+  try {
+    const stats = await CarryRequest.find({})
+      .populate({
+        path: "consignmentId",
+        select: "senderId status createdAt",
+        populate: {
+          path: "senderId",
+          select: "firstName lastName phoneNumber email",
+        },
+      })
+      .populate({
+        path: "travellerId",
+        select: "firstName lastName email phoneNumber",
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      total: stats.length,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching consolidated consignment:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error while fetching consolidated consignment",
     });
   }
 };
