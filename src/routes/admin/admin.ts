@@ -11,6 +11,7 @@ import {getFeedback, getSupportContacts} from "../../controllers/admin/feedbackA
 const adminRouts = Router();
 adminRouts.post("/adminLogin", adminLogin)
 
+
 adminRouts.use(isAdminAuthMiddleware);
 adminRouts.get("/getTransactionHistory",getTransactionHistory)
 adminRouts.get("/getConsignmentsStats", consignmentStats)
