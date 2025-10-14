@@ -1,7 +1,6 @@
+import type { Response } from "express";
 import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
-import type { Response } from "express";
-import ConsignmentModel from "../../models/consignment.model";
 import ConsignmentModel from "../../models/consignment.model";
 
 export const getTravellerReport = async (req: AdminAuthRequest, res: Response) => {
@@ -73,88 +72,6 @@ export const getTravellerReport = async (req: AdminAuthRequest, res: Response) =
 
 
 
-export const getSenderReport = async (req: AdminAuthRequest, res: Response) => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
-
-    const stats = await ConsignmentModel.aggregate([
-      // Step 1: Only delivered consignments
-      { $match: { status: "delivered" } },
-
-      // Step 2: Lookup carry requests for each consignment
-      {
-        $lookup: {
-          from: "carryrequests",
-          localField: "_id",
-          foreignField: "consignmentId",
-          as: "carryRequests",
-        },
-      },
-
-      // Step 3: Unwind carry requests (optional if you only count accepted)
-      { $unwind: { path: "$carryRequests", preserveNullAndEmptyArrays: true } },
-
-      // Step 4: Group by senderId
-      {
-        $group: {
-          _id: "$senderId",
-          consignmentCount: { $sum: 1 },
-          totalPaid: { $sum: { $ifNull: ["$carryRequests.senderPayAmount", 0] } },
-        },
-      },
-
-      // Step 5: Join sender details from users collection
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "sender",
-        },
-      },
-
-      { $unwind: "$sender" },
-
-      // Step 6: Format output
-      {
-        $project: {
-          _id: 0,
-          senderId: "$_id",
-          name: "$sender.firstName",
-          email: "$sender.email",
-          phone: "$sender.phoneNumber",
-          consignmentCount: 1,
-          totalPaid: 1,
-        },
-      },
-
-      // Step 7: Sort and paginate
-      { $sort: { totalPaid: -1 } },
-      { $skip: skip },
-      { $limit: limit },
-    ]);
-
-    // Total unique senders (for pagination metadata)
-    const totalSenders = await ConsignmentModel.distinct("senderId", { status: "delivered" });
-    const totalPages = Math.ceil(totalSenders.length / limit);
-
-    res.status(200).json({
-      success: true,
-      currentPage: page,
-      totalPages,
-      totalSenders: totalSenders.length,
-      stats,
-    });
-  } catch (error) {
-    console.error("Error fetching sender report:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error while fetching sender report",
-    });
-  }
-};
 
 export const getConsolidateConsignment = async (req: AdminAuthRequest, res: Response) => {
   try {

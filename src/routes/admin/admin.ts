@@ -5,7 +5,7 @@ import { consignmentStats, getEarningsStats, requestStats, travelStats ,getDashb
 import { getUsersList, getUserDetails, deleteUser } from "../../controllers/admin/userManagement";
 import { getPrices, managePrices } from "../../controllers/admin/priceManagement";
 import { addAdminUser, deleteAdminUser, editAdminUser, getAdminUsers,getAdminUserById } from "../../controllers/admin/management";
-import { getConsolidateConsignment, getSenderReport, getSenderReport, getTravellerReport } from "../../controllers/admin/report";
+import { getConsolidateConsignment, getSenderReport, getTravellerReport } from "../../controllers/admin/report";
 import {getFeedback, getSupportContacts} from "../../controllers/admin/feedbackAndContacts";
 
 const adminRouts = Router();
@@ -30,9 +30,21 @@ adminRouts.patch("/managePrices", managePrices)
 
 //Admin Management
 adminRouts.get("/getAdminUsers", getAdminUsers)
-adminRouts.delete("/deleteAdminUser", deleteAdminUser)
-adminRouts.patch("/editAdminUser", editAdminUser)
-adminRouts.post("/addAdminUser", addAdminUser) 
-adminRouts.get("/getTravellerReport",getTravellerReport)
+adminRouts.get("/getAdminUserById/:id", getAdminUserById)
+adminRouts.delete("/deleteAdminUser/:id", deleteAdminUser)
+adminRouts.patch("/editAdminUser/:id", editAdminUser)
+adminRouts.post("/addAdminUser", addAdminUser)
 
+//Reports
+adminRouts.get("/getTravellerReport",  getTravellerReport)
+adminRouts.get("/getSenderReport", getSenderReport)
+adminRouts.get("/getConsolidateConsignment", getConsolidateConsignment)
+adminRouts.get("/getSenderReport", getSenderReport)
+
+//Dashboard Stats
+adminRouts.get("/getDashboardStats", getDashboardStats)
+
+//Feedback and Contacts
+adminRouts.get("/getFeedback", getFeedback)
+adminRouts.get("/getSupportContacts", getSupportContacts)
 export default adminRouts;
