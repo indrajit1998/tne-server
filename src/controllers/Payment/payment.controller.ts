@@ -369,6 +369,26 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
         if (!carryRequest) throw new Error("CarryRequest not found");
         console.log("Updated CarryRequest...");
 
+        // Update Consignment status to "assigned"
+        console.log("Updating Consignment status to 'assigned'...");
+        const updatedConsignment = await ConsignmentModel.findOneAndUpdate(
+          { _id: payment.consignmentId },
+          {
+            $set: {
+              status: "assigned",
+              travellerId: carryRequest.travellerId,
+              assignedAt: new Date(),
+            },
+          },
+          { new: true, session }
+        );
+
+        if (!updatedConsignment) {
+          throw new Error("Failed to update consignment to 'assigned'");
+        }
+
+        console.log("✅ Consignment updated to 'assigned'");
+
         // // Calculate platform commission
         const fareConfig = await FareConfigModel.findOne()
           .sort({ createdAt: -1 })
