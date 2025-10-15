@@ -2,6 +2,7 @@ import type { Response } from "express";
 import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
 import ConsignmentModel from "../../models/consignment.model";
+import Payment from "../../models/payment.model";
 
 export const getTravellerReport = async (req: AdminAuthRequest, res: Response) => {
   try {
@@ -181,3 +182,21 @@ export const getSenderReport = async (req: AdminAuthRequest, res: Response) => {
     });
   }
 };
+
+
+export const getSalesReport = async (req: AdminAuthRequest, res: Response) => {
+  try {
+    const stats = await Payment.find({}).populate({ path: "travelId", select: "fromCity toCity travelDate" }).populate({ path: "consignmentId", select: "itemName itemCategory itemWeight status" }).populate({ path: "userId", select: "firstName lastName email phoneNumber" }).lean();
+    res.status(200).json({
+      success: true,
+      total: stats.length,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching sales report:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error while fetching sales report",
+    });
+  }
+ }
