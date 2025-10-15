@@ -80,6 +80,7 @@ export async function validateVpa(vpa: string): Promise<VpaValidationResult> {
     return { success: false };
   }
 }
+
 export async function createBankFundAccount(
   contactId: string,
   name: string,
@@ -155,6 +156,7 @@ export async function createVpaFundAccount(
     );
   }
 }
+
 export async function createPayout(
   fundAccountId: string,
   amount: number,
@@ -192,4 +194,3 @@ export async function createPayout(
     );
   }
 }
-

@@ -2,6 +2,11 @@ import axios from "axios";
 import FormData from "form-data";
 import env from "./env";
 
+interface GeoPoint {
+  type: "Point";
+  coordinates: [number, number];
+}
+
 function formatDuration(startDate: string, endDate: string) {
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
@@ -126,9 +131,18 @@ export async function generateOtp(
   }
 }
 
+const formatCoordinates = (coords?: GeoPoint) => {
+  if (!coords || !Array.isArray(coords.coordinates)) return null;
+  return {
+    latitude: coords.coordinates[1],
+    longitude: coords.coordinates[0],
+  };
+};
+
 export {
   calculateSenderPay,
   calculateTravellerEarning,
   calculateVolumetricWeight,
   formatDuration,
+  formatCoordinates,
 };
