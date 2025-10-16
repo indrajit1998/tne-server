@@ -34,10 +34,8 @@ export const generateOtp = async (req: Request, res: Response) => {
 
     const validPhone = result.data;
 
-    // Generate OTP for dev mode (no API call)
+    // Generate OTP
     const otp = generateRandomOtp();
-
-    console.log(`🔹 Generated OTP for ${validPhone}: ${otp}`);
 
     // ✅ Ensure user exists
     let user = await User.findOne({ phoneNumber: validPhone });
@@ -86,8 +84,6 @@ export const generateOtp = async (req: Request, res: Response) => {
       }
     }
 
-    console.log(`🔹 Dev mode: OTP for ${validPhone} is ${otp}. SMS NOT sent.`);
-
     // ✅ Send SMS using Pingbix
     const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
 
@@ -105,58 +101,36 @@ export const generateOtp = async (req: Request, res: Response) => {
     formData.append("duplicatecheck", "true");
     formData.append("dlr", "1");
 
-    if (env.NODE_ENV === "production") {
-      const smsResponse = await axios.post(
-        "https://app.pingbix.com/SMSApi/send",
-        formData,
-        {
-          headers: {
-            ...formData.getHeaders(),
-            Cookie: "SERVERID=webC1",
-          },
-          maxBodyLength: Infinity,
-        }
-      );
-
-      console.log("✅ SMS API Response:", smsResponse.data);
-
-      // console.log("Prod otp brnach commented out");
-
-      // ✅ Return API response
-      if (smsResponse.data?.status === "success") {
-        return res
-          .status(CODES.OK)
-          .json(
-            sendResponse(
-              CODES.OK,
-              { phoneNumber: validPhone },
-              "OTP sent successfully"
-            )
-          );
-      } else {
-        return res
-          .status(CODES.INTERNAL_SERVER_ERROR)
-          .json(
-            sendResponse(
-              CODES.INTERNAL_SERVER_ERROR,
-              null,
-              "Failed to send OTP"
-            )
-          );
+    const smsResponse = await axios.post(
+      "https://app.pingbix.com/SMSApi/send",
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(),
+          Cookie: "SERVERID=webC1",
+        },
+        maxBodyLength: Infinity,
       }
-    } else {
-      // In dev, skip api call, log OTP for testing
-      console.log(
-        `🔹 Dev mode: OTP for ${validPhone} is ${otp}. SMS not sent.`
-      );
+    );
 
-      return res.status(CODES.OK).json(
-        sendResponse(
-          CODES.OK,
-          { phoneNumber: validPhone, otp }, // include otp for dev convenience
-          "OTP generated successfully (dev mode)"
-        )
-      );
+    console.log("✅ SMS API Response:", smsResponse.data);
+
+    if (smsResponse.data?.status === "success") {
+      return res
+        .status(CODES.OK)
+        .json(
+          sendResponse(
+            CODES.OK,
+            { phoneNumber: validPhone },
+            "OTP sent successfully"
+          )
+        );
+    } else {
+      return res
+        .status(CODES.INTERNAL_SERVER_ERROR)
+        .json(
+          sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Failed to send OTP")
+        );
     }
   } catch (error: any) {
     console.error(
