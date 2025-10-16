@@ -105,26 +105,20 @@ export async function generateOtp(
   formData.append("dlr", "1");
 
   try {
-    if (env.NODE_ENV === "production") {
-      const smsResponse = await axios.post(
-        "https://app.pingbix.com/SMSApi/send",
-        formData,
-        {
-          headers: {
-            ...formData.getHeaders(), // ✅ only in Node.js
-            Cookie: "SERVERID=webC1",
-          },
-          maxBodyLength: Infinity,
-        }
-      );
+    const smsResponse = await axios.post(
+      "https://app.pingbix.com/SMSApi/send",
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(), // ✅ only in Node.js
+          Cookie: "SERVERID=webC1",
+        },
+        maxBodyLength: Infinity,
+      }
+    );
 
-      console.log("✅ SMS API Response:", smsResponse.data);
-      return { otp, response: smsResponse.data };
-    } else {
-      // In dev, skip api call, log OTP for testing
-      console.log(`🔹 Dev mode: OTP for ${type} is ${otp}. SMS not sent.`);
-      return { otp };
-    }
+    console.log("✅ SMS API Response:", smsResponse.data);
+    return { otp, response: smsResponse.data };
   } catch (error) {
     console.error("❌ Error sending SMS:", error);
     throw error;
