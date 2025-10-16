@@ -1,6 +1,5 @@
 import axios from "axios";
 import FormData from "form-data";
-import env from "./env";
 
 interface GeoPoint {
   type: "Point";
@@ -88,7 +87,19 @@ export async function generateOtp(
     Math.floor(100000 + Math.random() * 900000).toString();
 
   const otp = generateRandomOtp();
-  const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+  const message =
+    type === "sender"
+      ? `Please use OTP ${otp} to accept the Consignment from the Sender after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
+      : type === "receiver"
+      ? `Please use OTP ${otp} to Collect the Consignment from the Traveler after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
+      : `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+
+  const dltTemplateId =
+    type === "sender"
+      ? "1707173408029753777" // sender template
+      : type === "receiver"
+      ? "1707173408034076405" // receiver template
+      : "1707173408029753777"; // fallback for login
 
   const formData = new FormData();
   formData.append("userid", "timestrings");
@@ -99,7 +110,7 @@ export async function generateOtp(
   formData.append("msg", message);
   formData.append("sendMethod", "quick");
   formData.append("msgType", "text");
-  formData.append("dltTemplateId", "1707173406941797486");
+  formData.append("dltTemplateId", dltTemplateId);
   formData.append("output", "json");
   formData.append("duplicatecheck", "true");
   formData.append("dlr", "1");
@@ -137,6 +148,6 @@ export {
   calculateSenderPay,
   calculateTravellerEarning,
   calculateVolumetricWeight,
-  formatDuration,
   formatCoordinates,
+  formatDuration,
 };
