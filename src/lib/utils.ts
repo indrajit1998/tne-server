@@ -88,9 +88,9 @@ export async function generateOtp(
 
   const otp = generateRandomOtp();
   const message =
-    type === "sender"
+    type === "receiver"
       ? `Please use OTP ${otp} to accept the Consignment from the Sender after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
-      : type === "receiver"
+      : type === "sender"
       ? `Please use OTP ${otp} to Collect the Consignment from the Traveler after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
       : `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
 
