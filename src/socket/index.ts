@@ -24,7 +24,7 @@ export const initSocket = (server: HttpServer) => {
     SocketData
   >(server, {
     cors: {
-      origin: env.NODE_ENV === "production" ? env.APP_URL : "*", // TODO: Change this to app domain in production
+      origin: "*", // TODO: Change this to app domain in production
       methods: ["GET", "POST"],
     },
     pingTimeout: 60000, // closes inactive sockets

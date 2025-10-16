@@ -8,7 +8,7 @@ import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
 import env from "../../lib/env";
 import type { AuthRequest } from "../../middlewares/authMiddleware.js";
-import { User } from "../../models/user.model";
+import { User, type User as UserT } from "../../models/user.model";
 import { Verification } from "../../models/verfiication.model";
 
 const generateRandomOtp = () =>
@@ -209,7 +209,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
           )
         );
     }
-    if (env.NODE_ENV !== "development" && verification.expiresAt < new Date()) {
+    if (verification.expiresAt < new Date()) {
       await Verification.deleteOne({ phoneNumber: validPhone }); // cleanup expired OTP
       return res
         .status(CODES.GONE)
@@ -319,18 +319,19 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
         );
     }
 
+    const updateData: Partial<UserT> = {
+      firstName,
+      lastName,
+      onboardingCompleted: true,
+      profilePictureUrl: profilePictureUrl || undefined,
+    };
+
+    if (email) updateData.email = email;
+
     // ✅ Update user profile
-    const onboardedUser = await User.findByIdAndUpdate(
-      userId,
-      {
-        firstName,
-        lastName,
-        profilePictureUrl,
-        email,
-        onboardingCompleted: true,
-      },
-      { new: true } // return the updated document
-    );
+    const onboardedUser = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+    });
 
     const token = jwt.sign({ _id: user._id }, env.JWT_SECRET, {
       expiresIn: "7d",
