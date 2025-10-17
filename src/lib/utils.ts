@@ -1,6 +1,6 @@
 import axios from "axios";
 import FormData from "form-data";
-import { TravelModel } from "../models/travel.model";
+import env from "./env";
 
 function formatDuration(startDate: string, endDate: string) {
   const start = new Date(startDate).getTime();
@@ -43,42 +43,42 @@ function calculateVolumetricWeight(
   return volumetricWeight;
 }
 
-function calculateTravellerEarning(modelOfTravel:string,consignment:any){
+function calculateTravellerEarning(modelOfTravel: string, consignment: any) {
   let earning;
-  switch(modelOfTravel){
+  switch (modelOfTravel) {
     case "air":
-      earning=consignment.flightPrice.travelerEarn;
+      earning = consignment.flightPrice.travelerEarn;
       break;
     case "roadways":
-      earning=consignment.roadWaysPrice.travelerEarn;
+      earning = consignment.roadWaysPrice.travelerEarn;
       break;
     case "train":
-      earning=consignment.trainPrice.travelerEarn;
-      break;    
+      earning = consignment.trainPrice.travelerEarn;
+      break;
   }
   return earning;
 }
 
-function calculateSenderPay(modelOfTravel:string,consignment:any){
+function calculateSenderPay(modelOfTravel: string, consignment: any) {
   let pay;
-  switch(modelOfTravel){
+  switch (modelOfTravel) {
     case "air":
-      pay=consignment.flightPrice.senderPay;
+      pay = consignment.flightPrice.senderPay;
       break;
     case "roadways":
-      pay=consignment.roadWaysPrice.senderPay;
+      pay = consignment.roadWaysPrice.senderPay;
       break;
     case "train":
-      pay=consignment.trainPrice.senderPay;
+      pay = consignment.trainPrice.senderPay;
       break;
   }
   return pay;
 }
 
-
-
-
-export async function generateOtp(phoneNumber: string) {
+export async function generateOtp(
+  phoneNumber: string,
+  type?: "sender" | "receiver"
+) {
   const generateRandomOtp = () =>
     Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -100,27 +100,35 @@ export async function generateOtp(phoneNumber: string) {
   formData.append("dlr", "1");
 
   try {
-    const smsResponse = await axios.post(
-      "https://app.pingbix.com/SMSApi/send",
-      formData,
-      {
-        headers: {
-          ...formData.getHeaders(), // ✅ only in Node.js
-          Cookie: "SERVERID=webC1",
-        },
-        maxBodyLength: Infinity,
-      }
-    );
+    if (env.NODE_ENV === "production") {
+      const smsResponse = await axios.post(
+        "https://app.pingbix.com/SMSApi/send",
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(), // ✅ only in Node.js
+            Cookie: "SERVERID=webC1",
+          },
+          maxBodyLength: Infinity,
+        }
+      );
 
-    console.log("✅ SMS API Response:", smsResponse.data);
-    return { otp, response: smsResponse.data };
+      console.log("✅ SMS API Response:", smsResponse.data);
+      return { otp, response: smsResponse.data };
+    } else {
+      // In dev, skip api call, log OTP for testing
+      console.log(`🔹 Dev mode: OTP for ${type} is ${otp}. SMS not sent.`);
+      return { otp };
+    }
   } catch (error) {
     console.error("❌ Error sending SMS:", error);
     throw error;
   }
 }
 
-
-
-
-export { formatDuration, calculateVolumetricWeight, calculateTravellerEarning, calculateSenderPay };
+export {
+  calculateSenderPay,
+  calculateTravellerEarning,
+  calculateVolumetricWeight,
+  formatDuration,
+};

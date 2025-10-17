@@ -115,9 +115,19 @@ export const createNotification = async ({
 };
 
 export const notificationHelper = async (
-  type: "bySender" | "byTraveller",
-  consignment: { description: string },
-  userId: Types.ObjectId
+  type:
+    | "bySender"
+    | "byTraveller"
+    | "paymentSuccess"
+    | "paymentFailed"
+    | "consignmentCollected"
+    | "consignmentDelivered"
+    | "carryRequestExpired"
+    | "travelCancelled"
+    | "handoverFailed",
+  consignment: any,
+  typeOfNotif: "travel" | "consignment" | "general",
+  userId: string | Types.ObjectId
 ) => {
   const user = await User.findById(userId).select("firstName lastName");
   const name = user ? `${user.firstName} ${user.lastName}` : "Unknown user";
@@ -127,11 +137,61 @@ export const notificationHelper = async (
       return {
         title: "New Carry Request",
         message: `${name} has requested you to carry their consignment.`,
+        typeOfNotif,
       };
     case "byTraveller":
       return {
         title: "New Carry Request",
         message: `${name} wants to carry your consignment to your requested location.`,
+        typeOfNotif,
+      };
+    case "paymentSuccess":
+      return {
+        title: "Payment Successful",
+        message: `Payment received for your consignment. ₹${consignment.amount} credited in your wallet.`,
+        typeOfNotif,
+      };
+    case "paymentFailed":
+      return {
+        title: "Payment Failed",
+        message: `Payment of ₹${consignment.amount} failed. Please try again.`,
+        typeOfNotif,
+      };
+    case "consignmentCollected":
+      return {
+        title: "Consignment Collected",
+        message: `Your consignment has been collected by ${name}.`,
+        typeOfNotif,
+      };
+    case "consignmentDelivered":
+      return {
+        title: "Consignment Delivered",
+        message: `${name} delivered your consignment successfully.`,
+        typeOfNotif,
+      };
+    case "carryRequestExpired":
+      return {
+        title: "Carry Request Expired",
+        message: `Your carry request for the consignment "${consignment.consignmentId}" has expired.`,
+        typeOfNotif,
+      };
+    case "travelCancelled":
+      return {
+        title: "Travel Cancelled",
+        message: `${name} has cancelled their travel. Your consignment "${consignment.consignmentId}" is affected.`,
+        typeOfNotif,
+      };
+    case "handoverFailed":
+      return {
+        title: "Handover Failed",
+        message: `Handover of your consignment "${consignment.consignmentId}" failed. Please contact the traveller.`,
+        typeOfNotif,
+      };
+    default:
+      return {
+        title: "Notification",
+        message: "You have a new update.",
+        typeOfNotif,
       };
   }
 };
