@@ -28,8 +28,8 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
       Notification.countDocuments({ userId }),
     ]);
 
-    console.log("notifications: ", notifications);
-    console.log("total notifications: ", total);
+    // console.log("notifications: ", notifications);
+    // console.log("total notifications: ", total);
 
     res.json({
       success: true,
@@ -56,7 +56,7 @@ export const markNotificationRead = async (req: AuthRequest, res: Response) => {
 
     const notification = await Notification.findOneAndUpdate(
       { _id: id, userId },
-      { read: true },
+      { isRead: true },
       { new: true }
     );
 
@@ -84,8 +84,8 @@ export const markAllRead = async (req: AuthRequest, res: Response) => {
     }
 
     const result = await Notification.updateMany(
-      { userId, read: false },
-      { read: true }
+      { userId, isRead: false },
+      { isRead: true }
     );
     res.json({ success: true, data: { updatedCount: result.modifiedCount } });
   } catch (err: any) {
