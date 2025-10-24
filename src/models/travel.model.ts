@@ -97,7 +97,7 @@ const travelSchema = new Schema<Travel>(
     durationOfTravel: { type: String, required: true },
     status: {
       type: String,
-      enum: ["upcoming", "ongoing", "completed", "cancelled"],
+      enum: ["upcoming", "ongoing", "completed", "cancelled", "expired"],
       required: true,
     },
   },

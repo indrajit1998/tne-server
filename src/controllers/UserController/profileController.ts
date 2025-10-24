@@ -1,12 +1,16 @@
+import crypto from "crypto";
 import type { Response } from "express";
 import type { JwtPayload } from "jsonwebtoken";
 import mongoose, { Types } from "mongoose";
+import { v4 as uuidv4 } from "uuid";
 import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
+import logger from "../../lib/logger.js";
 import type { AuthRequest } from "../../middlewares/authMiddleware.js";
 import ConsignmentModel from "../../models/consignment.model.js";
 import Earning from "../../models/earning.model.js";
 import Payment from "../../models/payment.model.js";
+import { Payout } from "../../models/payout.model.js";
 import PayoutAccountsModel from "../../models/payoutaccounts.model.js";
 import { TravelModel } from "../../models/travel.model.js";
 import TravelConsignments from "../../models/travelconsignments.model.js";
@@ -122,7 +126,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
       .status(CODES.OK)
       .json(sendResponse(CODES.OK, user, "User profile fetched successfully"));
   } catch (error) {
-    console.error("Error fetching user profile:", error);
+    logger.error("Error fetching user profile:" + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
@@ -143,7 +147,27 @@ export const getTravelAndConsignment = async (
         .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
 
-    // ✅ Fetch user's travels
+    const now = new Date();
+
+    //  1: Persist expired travels
+    await TravelModel.updateMany(
+      {
+        status: "upcoming",
+        expectedStartDate: { $lt: now },
+      },
+      { $set: { status: "expired" } }
+    );
+
+    // 2: Persist expired consignments
+    await ConsignmentModel.updateMany(
+      {
+        status: { $in: ["published", "requested"] },
+        sendingDate: { $lt: now },
+      },
+      { $set: { status: "expired" } }
+    );
+
+    // 3: Fetch user's travels
     const travels = await TravelModel.find({ travelerId: userId })
       .populate(
         "travelerId",
@@ -152,7 +176,7 @@ export const getTravelAndConsignment = async (
       .sort({ createdAt: -1 })
       .lean();
 
-    // For each travel, attach consignments linked through TravelConsignments
+    //  4: Enrich travels with consignments
     const enrichedTravels = await Promise.all(
       travels.map(async (travel) => {
         const travelConsignmentsLinked = await TravelConsignments.find({
@@ -165,8 +189,7 @@ export const getTravelAndConsignment = async (
           })
           .lean();
 
-        // Format coordinates for travel
-        const formattedTravel = {
+        return {
           ...travel,
           fromCoordinates: formatCoordinates(
             travel.fromCoordinates as Coordinates
@@ -175,26 +198,22 @@ export const getTravelAndConsignment = async (
           consignments: travelConsignmentsLinked
             .map((tc) => {
               const consignment = tc.consignmentId as any;
-
               if (!isPopulatedConsignment(consignment)) return null;
 
               return {
                 ...consignment,
                 fromCoordinates: formatCoordinates(consignment.fromCoordinates),
                 toCoordinates: formatCoordinates(consignment.toCoordinates),
-                // ✅ Include travelConsignmentId
                 travelConsignmentId: tc._id,
                 travelConsignmentStatus: tc.status,
               };
             })
             .filter(Boolean),
         };
-
-        return formattedTravel;
       })
     );
 
-    // ✅ Fetch user's consignments
+    //  5: Fetch user's consignments
     const consignments = await ConsignmentModel.find({ senderId: userId })
       .populate(
         "senderId",
@@ -203,7 +222,7 @@ export const getTravelAndConsignment = async (
       .sort({ createdAt: -1 })
       .lean();
 
-    // For each consignment, attach travels linked through TravelConsignments
+    //  6: Enrich consignments with travels
     const enrichedConsignments = await Promise.all(
       consignments.map(async (consignment) => {
         const travelConsignmentsLinked = await TravelConsignments.find({
@@ -221,8 +240,7 @@ export const getTravelAndConsignment = async (
           })
           .lean();
 
-        // Format coordinates for consignment
-        const formattedConsignment = {
+        return {
           ...consignment,
           fromCoordinates: formatCoordinates(
             consignment.fromCoordinates as Coordinates
@@ -233,25 +251,22 @@ export const getTravelAndConsignment = async (
           travels: travelConsignmentsLinked
             .map((tc) => {
               const travel = tc.travelId as any;
-
               if (!isPopulatedTravel(travel)) return null;
 
               return {
                 ...travel,
                 fromCoordinates: formatCoordinates(travel.fromCoordinates),
                 toCoordinates: formatCoordinates(travel.toCoordinates),
-                // ✅ Include travelConsignmentId
                 travelConsignmentId: tc._id,
                 travelConsignmentStatus: tc.status,
               };
             })
             .filter(Boolean),
         };
-
-        return formattedConsignment;
       })
     );
 
+    //  7: Return response (FE shape unchanged)
     return res
       .status(CODES.OK)
       .json(
@@ -262,7 +277,7 @@ export const getTravelAndConsignment = async (
         )
       );
   } catch (error) {
-    console.error("Error fetching travel and consignment data:", error);
+    logger.error("Error fetching travel and consignment data:" + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
@@ -287,6 +302,7 @@ export const createRazorpayCustomerId = async (
         .status(CODES.NOT_FOUND)
         .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
     }
+
     if (!user.onboardingCompleted) {
       return res
         .status(CODES.BAD_REQUEST)
@@ -294,6 +310,7 @@ export const createRazorpayCustomerId = async (
           sendResponse(CODES.BAD_REQUEST, null, "User onboarding not completed")
         );
     }
+
     if (!user.email || !user.firstName || !user.lastName) {
       return res
         .status(CODES.BAD_REQUEST)
@@ -301,18 +318,21 @@ export const createRazorpayCustomerId = async (
           sendResponse(CODES.BAD_REQUEST, null, "User email or name not found")
         );
     }
+
     const razorpayCustomerId = await createRazorpayContactId(
       `${user.firstName} ${user.lastName}`,
       user.email,
       user.phoneNumber
     );
+
     user.razorpayCustomerId = razorpayCustomerId;
     await user.save();
+
     return res
       .status(CODES.OK)
       .json(sendResponse(CODES.OK, { razorpayCustomerId }));
   } catch (error) {
-    console.error("Error creating Razorpay customer ID:", error);
+    logger.error("Error creating Razorpay customer ID:" + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
@@ -321,7 +341,43 @@ export const createRazorpayCustomerId = async (
   }
 };
 
-export const addFunds = async (req: AuthRequest, res: Response) => {
+export const getUserFundAccounts = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+
+    const fundAccounts = await PayoutAccountsModel.find({ userId }).lean();
+
+    if (fundAccounts.length === 0) {
+      return res
+        .status(CODES.NOT_FOUND)
+        .json(sendResponse(CODES.NOT_FOUND, null, "Fund accounts not found"));
+    }
+
+    return res
+      .status(CODES.OK)
+      .json(sendResponse(CODES.OK, fundAccounts, "Fund accounts fetched"));
+  } catch (error) {
+    logger.error("Error fetching fund accounts:" + error);
+    return res
+      .status(CODES.INTERNAL_SERVER_ERROR)
+      .json(
+        sendResponse(
+          CODES.INTERNAL_SERVER_ERROR,
+          null,
+          "Something went wrong while fetching fund accounts"
+        )
+      );
+  }
+};
+
+export const addFundAccount = async (req: AuthRequest, res: Response) => {
+  const session = await mongoose.startSession();
+
   try {
     const { type, details } = req.body;
 
@@ -347,81 +403,202 @@ export const addFunds = async (req: AuthRequest, res: Response) => {
         .json(sendResponse(CODES.BAD_REQUEST, null, "User not found"));
     }
 
-    const userRazorpayCustomerId = user?.razorpayCustomerId;
-    if (!userRazorpayCustomerId) {
-      return res
-        .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(
-            CODES.BAD_REQUEST,
-            null,
-            "Razorpay customer ID not found"
-          )
+    // ⚠️ NOTE: Misnamed field — 'razorpayCustomerId' is actually the Razorpay Contact ID
+    let razorpayContactId = user.razorpayCustomerId;
+
+    if (!razorpayContactId) {
+      // Automatically create Razorpay contact for this user
+      logger.info("Razorpay customer ID not found — creating new one...");
+
+      if (!user.email) {
+        // Optionally, you can generate a placeholder email if none exists
+        logger.warn(
+          "No user email found — using placeholder for Razorpay contact creation"
         );
-    }
-
-    const name = `${user?.firstName} ${user?.lastName}`;
-    let fundAccount;
-
-    if (type === "bank_account") {
-      fundAccount = await createBankFundAccount(
-        String(userRazorpayCustomerId),
-        details.name,
-        details.ifsc,
-        details.accountNumber
-      );
-    } else if (type === "vpa") {
-      const isValidVpa = await validateVpa(details.vpa);
-      if (!isValidVpa.success) {
-        return res
-          .status(CODES.BAD_REQUEST)
-          .json(sendResponse(CODES.BAD_REQUEST, null, "Invalid VPA"));
       }
 
-      fundAccount = await createVpaFundAccount(
-        String(userRazorpayCustomerId),
-        details.vpa
-      );
-    } else {
-      return res
-        .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "Invalid account type"));
+      // Create Razorpay contact
+      try {
+        razorpayContactId = await createRazorpayContactId(
+          `${user.firstName} ${user.lastName}`,
+          user.email || "",
+          user.phoneNumber
+        );
+
+        // Save in DB (field still named 'razorpayCustomerId')
+        user.razorpayCustomerId = razorpayContactId;
+        await user.save();
+
+        logger.info("Razorpay customer ID created:" + razorpayContactId);
+      } catch (err) {
+        logger.error("Failed to create Razorpay customer ID:" + err);
+        return res
+          .status(CODES.INTERNAL_SERVER_ERROR)
+          .json(
+            sendResponse(
+              CODES.INTERNAL_SERVER_ERROR,
+              null,
+              "Failed to create Razorpay customer ID"
+            )
+          );
+      }
     }
 
-    const payout = await PayoutAccountsModel.create({
-      userId,
-      razorpayContactId: userRazorpayCustomerId,
-      razorpayFundAccountId: fundAccount,
-      displayName: name,
-      accountType: type,
+    const displayName = `${user.firstName} ${user.lastName}`;
+
+    const payoutAccount = await session.withTransaction(async () => {
+      let fundAccountId: string;
+      let maskedDetails: any = {};
+
+      if (type === "bank_account") {
+        const { accountNumber, bankName, branch, ifsc, name } = details;
+
+        if (!accountNumber || !bankName || !branch || !ifsc || !name) {
+          throw {
+            status: CODES.BAD_REQUEST,
+            message: "Incomplete bank account details",
+          };
+        }
+
+        if (ifsc.length !== 11) {
+          throw { status: CODES.BAD_REQUEST, message: "Invalid IFSC code" };
+        }
+
+        // Mask and hash
+        const accountHash = crypto
+          .createHash("sha256")
+          .update(accountNumber)
+          .digest("hex");
+        maskedDetails.accountNumber =
+          accountNumber.length > 4
+            ? "****" + accountNumber.slice(-4)
+            : accountNumber;
+        maskedDetails.bankName = bankName;
+        maskedDetails.branch = branch;
+
+        // Duplicate check
+        const existing = await PayoutAccountsModel.findOne({
+          userId,
+          accountHash,
+          accountType: "bank_account",
+        }).session(session);
+
+        if (existing) {
+          throw {
+            status: CODES.BAD_REQUEST,
+            message: "Bank account already added",
+          };
+        }
+
+        // Create fund account on Razorpay
+        fundAccountId = await createBankFundAccount(
+          razorpayContactId,
+          name,
+          ifsc,
+          accountNumber
+        );
+
+        // Save in DB
+        const newAccount = await PayoutAccountsModel.create(
+          [
+            {
+              userId,
+              razorpayContactId, // still named razorpayCustomerId in DB
+              razorpayFundAccountId: fundAccountId,
+              displayName,
+              accountType: "bank_account",
+              ...maskedDetails,
+              accountHash,
+            },
+          ],
+          { session }
+        );
+
+        if (!newAccount || !newAccount[0])
+          throw {
+            status: CODES.INTERNAL_SERVER_ERROR,
+            message: "Failed to create fund account",
+          };
+
+        return newAccount[0];
+      } else if (type === "vpa") {
+        const { vpa } = details;
+        if (!vpa)
+          throw { status: CODES.BAD_REQUEST, message: "VPA is required" };
+
+        const isValidVpa = await validateVpa(vpa);
+        if (!isValidVpa.success)
+          throw { status: CODES.BAD_REQUEST, message: "Invalid VPA" };
+
+        const vpaHash = crypto.createHash("sha256").update(vpa).digest("hex");
+        maskedDetails.vpa = vpa.replace(/(.{2}).+(@.+)/, "$1***$2");
+
+        const existing = await PayoutAccountsModel.findOne({
+          userId,
+          accountHash: vpaHash,
+          accountType: "vpa",
+        }).session(session);
+
+        if (existing)
+          throw { status: CODES.BAD_REQUEST, message: "VPA already added" };
+
+        fundAccountId = await createVpaFundAccount(razorpayContactId, vpa);
+
+        const newAccount = await PayoutAccountsModel.create(
+          [
+            {
+              userId,
+              razorpayContactId,
+              razorpayFundAccountId: fundAccountId,
+              displayName,
+              accountType: "vpa",
+              ...maskedDetails,
+              accountHash: vpaHash,
+            },
+          ],
+          { session }
+        );
+
+        if (!newAccount || !newAccount[0])
+          throw {
+            status: CODES.INTERNAL_SERVER_ERROR,
+            message: "Failed to create VPA account",
+          };
+
+        return newAccount[0];
+      } else {
+        throw { status: CODES.BAD_REQUEST, message: "Invalid account type" };
+      }
     });
-
-    if (!payout) {
-      return res
-        .status(CODES.NO_CONTENT)
-        .json(sendResponse(CODES.NO_CONTENT, null, "Payout not created"));
-    }
 
     return res
       .status(CODES.CREATED)
-      .json(sendResponse(CODES.CREATED, payout, "Payout created successfully"));
-  } catch (error) {
-    console.error("Error adding funds:", error);
-    return res
-      .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
         sendResponse(
-          CODES.INTERNAL_SERVER_ERROR,
-          null,
-          "Something went wrong while adding funds"
+          CODES.CREATED,
+          payoutAccount,
+          "Fund account added successfully"
         )
       );
+  } catch (error: any) {
+    logger.error("Error adding fund account:" + error);
+
+    // Custom error handling
+    const status = error?.status || CODES.INTERNAL_SERVER_ERROR;
+    const message =
+      error?.message || "Something went wrong while adding fund account";
+
+    return res.status(status).json(sendResponse(status, null, message));
+  } finally {
+    session.endSession();
   }
 };
 
 export const withdrawFunds = async (req: AuthRequest, res: Response) => {
+  const session = await mongoose.startSession();
+
   try {
-    const { earningId } = req.body;
+    const { earningId, fundAccountId } = req.body;
     const rawUser = req.user;
     const userId =
       typeof rawUser === "string"
@@ -433,36 +610,155 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
         .status(CODES.UNAUTHORIZED)
         .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
-    const earning = await Earning.findById(earningId);
+
+    // 1. Fetch earning
+    const earning = await Earning.findById(earningId).session(session);
     if (!earning) {
       return res
         .status(CODES.BAD_REQUEST)
         .json(sendResponse(CODES.BAD_REQUEST, null, "Earning not found"));
     }
-    const amount = earning.amount;
+
+    if (String(earning.userId) !== String(userId)) {
+      return res
+        .status(CODES.FORBIDDEN)
+        .json(sendResponse(CODES.FORBIDDEN, null, "Not owner of this earning"));
+    }
+
+    if (earning.is_withdrawn) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(sendResponse(CODES.BAD_REQUEST, null, "Already withdrawn"));
+    }
+
+    if (earning.status !== "completed") {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(sendResponse(CODES.BAD_REQUEST, null, "Earning not completed"));
+    }
+
+    const amount = Number(earning.amount || 0);
     if (amount <= 0) {
       return res
         .status(CODES.BAD_REQUEST)
         .json(sendResponse(CODES.BAD_REQUEST, null, "Invalid amount"));
     }
-    const fundAccount = await PayoutAccountsModel.findOne({ userId });
+
+    // 2. Fetch user's fund account
+    const fundAccount = await PayoutAccountsModel.findOne({
+      userId,
+      razorpayFundAccountId: fundAccountId,
+    }).session(session);
     if (!fundAccount) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "No fund account found"));
+        .json(
+          sendResponse(
+            CODES.BAD_REQUEST,
+            null,
+            "Invalid or missing fund account"
+          )
+        );
     }
-    const payoutId = await createPayout(
-      fundAccount.razorpayFundAccountId,
-      amount
-    );
 
-    if (!payoutId) {
+    // 3. Start transaction
+    let localPayout: any;
+    await session.withTransaction(async () => {
+      // Mark earning as payoutPending
+      const updated = await Earning.findOneAndUpdate(
+        { _id: earning._id, is_withdrawn: false, payoutId: { $exists: false } },
+        { $set: { payoutPending: true } },
+        { new: true, session }
+      );
+
+      if (!updated) throw new Error("Earning already linked or withdrawn");
+
+      // Create local payout
+      const clientPayoutId = uuidv4();
+      const payoutDoc = await Payout.create(
+        [
+          {
+            userId: new mongoose.Types.ObjectId(userId),
+            travelId: earning.travelId ?? undefined,
+            consignmentId: earning.consignmentId ?? undefined,
+            amount,
+            status: "pending",
+            razorpayPayoutId: "",
+            clientPayoutId,
+            earningIds: [earning._id],
+          },
+        ],
+        { session }
+      );
+
+      if (!payoutDoc || !payoutDoc[0])
+        throw new Error("Failed to create local payout record");
+
+      localPayout = payoutDoc[0];
+
+      // Link earning -> payoutId
+      await Earning.updateOne(
+        { _id: earning._id },
+        { $set: { payoutId: localPayout._id } },
+        { session }
+      );
+    });
+
+    // 4. Prepare Razorpay notes
+    const notes: Record<string, string> = {
+      userId: String(userId),
+      payoutId: String(localPayout.clientPayoutId),
+      earningIds: JSON.stringify([String(earning._id)]),
+      consignmentId: earning.consignmentId ? String(earning.consignmentId) : "",
+      travelId: earning.travelId ? String(earning.travelId) : "",
+    };
+
+    logger.info("Creating Razorpay payout with notes:" + notes);
+
+    // 5. Call Razorpay
+    let razorpayResponse;
+    try {
+      razorpayResponse = await createPayout(
+        fundAccount.razorpayFundAccountId,
+        amount,
+        {
+          notes,
+          idempotencyKey: localPayout.clientPayoutId.toString(),
+          mode: fundAccount.accountType === "vpa" ? "UPI" : "IMPS",
+        }
+      );
+    } catch (err: any) {
+      logger.error("Razorpay create payout failed:", err.message || err);
+
+      // Mark payout failed and revert earning
+      await Payout.findByIdAndUpdate(localPayout._id, {
+        status: "failed",
+        failureReason: err.message || "Razorpay create failed",
+      });
+
+      await Earning.updateOne(
+        { _id: earning._id },
+        {
+          $unset: { payoutPending: true, payoutId: "" },
+          $set: { is_withdrawn: false },
+        }
+      );
+
       return res
         .status(CODES.INTERNAL_SERVER_ERROR)
         .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Payout failed"));
     }
 
-    // 4. Record the payment
+    // 6. Update local payout with Razorpay ID
+    await Payout.findByIdAndUpdate(localPayout._id, {
+      $set: {
+        razorpayPayoutId: razorpayResponse?.id,
+        status: "processing",
+        notes,
+      },
+    });
+
+    // 7. Record Payment
     const payment = await Payment.create({
       userId: new mongoose.Types.ObjectId(userId),
       travelId: earning.travelId,
@@ -470,23 +766,30 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       amount,
       status: "pending",
       type: "traveller_earning",
-      razorpayPaymentId: payoutId,
+      razorpayPaymentId: razorpayResponse?.id,
     });
 
-    return res.json(
-      sendResponse(CODES.CREATED, payment, "Withdraw request created")
+    logger.info("Withdraw request created successfully for userId:" + userId);
+
+    return res.status(CODES.CREATED).json(
+      sendResponse(CODES.CREATED, {
+        payout: {
+          id: localPayout._id,
+          razorpayPayoutId: razorpayResponse?.id,
+          status: "processing",
+        },
+        payment,
+      })
     );
   } catch (error) {
-    console.error("Error withdrawing funds:", error);
+    logger.error("Error withdrawing funds:" + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
-        sendResponse(
-          CODES.INTERNAL_SERVER_ERROR,
-          null,
-          "Something went wrong while withdrawing funds"
-        )
+        sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
       );
+  } finally {
+    session.endSession();
   }
 };
 
@@ -522,7 +825,7 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
       })
     );
   } catch (error) {
-    console.error("❌ Error fetching user earnings:", error);
+    logger.error("❌ Error fetching user earnings:" + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(

@@ -5,6 +5,26 @@ import logger from "../lib/logger";
 const RAZORPAY_KEY_ID = env.RAZORPAY_KEY_ID!;
 const RAZORPAY_KEY_SECRET = env.RAZORPAY_KEY_SECRET!;
 
+interface VpaValidationResult {
+  success: boolean;
+  customerName?: string;
+}
+
+export interface RazorpayPayoutResponse {
+  id: string;
+  entity: string;
+  amount: number;
+  currency: string;
+  status: string;
+  fund_account_id: string;
+  mode: string;
+  purpose: string;
+  notes: Record<string, any>;
+  created_at: number;
+  failure_reason?: string;
+  [key: string]: any; // allow extra fields
+}
+
 export async function createRazorpayContactId(
   name: string,
   email: string,
@@ -42,11 +62,6 @@ export async function createRazorpayContactId(
         "Failed to create Razorpay contact"
     );
   }
-}
-
-interface VpaValidationResult {
-  success: boolean;
-  customerName?: string;
 }
 
 export async function validateVpa(vpa: string): Promise<VpaValidationResult> {
@@ -160,10 +175,30 @@ export async function createVpaFundAccount(
 export async function createPayout(
   fundAccountId: string,
   amount: number,
-  currency = "INR",
-  mode: "IMPS" | "NEFT" | "UPI" = "IMPS"
-): Promise<string> {
+  options?: {
+    currency?: string;
+    mode?: "IMPS" | "NEFT" | "UPI";
+    notes?: Record<string, any>;
+    idempotencyKey?: string;
+  }
+): Promise<RazorpayPayoutResponse> {
+  const {
+    currency = "INR",
+    mode = "IMPS",
+    notes = {},
+    idempotencyKey,
+  } = options || {};
+
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    // Razorpay requires idempotency header for payouts (X-Payout-Idempotency)
+    if (idempotencyKey) {
+      headers["X-Payout-Idempotency"] = idempotencyKey;
+    }
+
     const response = await axios.post(
       "https://api.razorpay.com/v1/payouts",
       {
@@ -174,17 +209,31 @@ export async function createPayout(
         mode,
         purpose: "payout",
         queue_if_low_balance: true,
+        notes,
       },
       {
         auth: {
           username: RAZORPAY_KEY_ID,
           password: RAZORPAY_KEY_SECRET,
         },
-        headers: { "Content-Type": "application/json" },
+        headers,
       }
     );
 
-    return response.data.id; // payout id
+    const data = response.data;
+
+    // runtime validation
+    if (
+      !data ||
+      typeof data.id !== "string" ||
+      typeof data.status !== "string"
+    ) {
+      logger.error("Invalid payout response from Razorpay:", data);
+      throw new Error("Invalid response from Razorpay payout API");
+    }
+
+    // safe to typecast now
+    return data as RazorpayPayoutResponse; // returns payout object which includes id
   } catch (error: any) {
     logger.error(
       `Error creating payout: ${error.response?.data || error.message}`

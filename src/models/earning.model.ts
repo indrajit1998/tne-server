@@ -6,9 +6,11 @@ interface Earning {
   travelId: Types.ObjectId;
   consignmentId: Types.ObjectId;
   amount: number;
-  status: "pending" | "completed" | "failed";
+  status: "pending" | "payout_pending" | "completed" | "failed";
   is_withdrawn: boolean;
   withdrawnAt?: Date;
+  payoutId?: Types.ObjectId;
+  payoutAmount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,12 +35,18 @@ const earningSchema = new mongoose.Schema<Earning>(
     amount: { type: Number, required: true },
     status: {
       type: String,
-      enum: ["pending", "completed", "failed"],
+      enum: ["pending", "payout_pending", "completed", "failed"],
       default: "pending",
       required: true,
     },
     is_withdrawn: { type: Boolean, default: false },
     withdrawnAt: { type: Date },
+    payoutId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payout",
+      required: false,
+    }, // new — links earning -> payout
+    payoutAmount: { type: Number, required: false }, // optional in case partial payout logic needed
   },
   { timestamps: true }
 );

@@ -8,6 +8,11 @@ interface PayoutAccounts {
   updatedAt: Date;
   displayName?: string;
   accountType?: "bank_account" | "vpa";
+  bankName?: string;
+  branch?: string;
+  accountNumber?: string; // masked for frontend
+  vpa?: string; // masked for frontend
+  accountHash?: string; // SHA-256 hash for duplicate check
 }
 
 const payoutAccountsSchema = new Schema<PayoutAccounts>(
@@ -19,6 +24,11 @@ const payoutAccountsSchema = new Schema<PayoutAccounts>(
     updatedAt: { type: Date, default: Date.now },
     displayName: { type: String },
     accountType: { type: String, enum: ["bank_account", "vpa"] },
+    bankName: { type: String }, // optional for VPA
+    branch: { type: String }, // optional for VPA
+    accountNumber: { type: String }, // masked for frontend
+    accountHash: { type: String, required: true, unique: true }, // hash for uniqueness
+    vpa: { type: String }, // masked for frontend
   },
   { timestamps: true }
 );
