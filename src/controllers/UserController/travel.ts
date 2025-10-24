@@ -142,6 +142,16 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    logger.info(
+      "DATA BEING SENT (IN locateTravel): => " +
+        {
+          fromstate,
+          tostate,
+          date,
+          modeOfTravel,
+        }
+    );
+
     // Normalize and tokenize for flexible partial matching
     const tokenize = (str: string) =>
       str
@@ -161,8 +171,24 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     const endOfDay = new Date(startOfDay);
     endOfDay.setDate(startOfDay.getDate() + 1);
 
-    // Default travel mode (optional param)
-    const travelMode = modeOfTravel || undefined;
+    let travelMode: string | undefined;
+
+    if (modeOfTravel) {
+      const normalized = modeOfTravel.toLowerCase();
+      if (["air", "airways", "airplane", "flight"].includes(normalized)) {
+        travelMode = "air";
+      } else if (
+        ["road", "roadways", "car", "bus", "vehicle"].includes(normalized)
+      ) {
+        travelMode = "roadways";
+      } else if (["train", "rail", "railways"].includes(normalized)) {
+        travelMode = "train";
+      } else {
+        travelMode = normalized; // fallback to raw string if it’s something new
+      }
+    } else {
+      travelMode = undefined;
+    }
 
     logger.info(
       `🔍 Locating travels from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()} ${
