@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { addAddress } from "../../controllers/address.controller.js";
 import {
-  addFunds,
+  addFundAccount,
   createRazorpayCustomerId,
   getProfile,
   getTravelAndConsignment,
   getUserEarnings,
+  getUserFundAccounts,
   withdrawFunds,
 } from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
@@ -23,9 +24,9 @@ profileRouter.patch(
   isAuthMiddleware,
   createRazorpayCustomerId
 );
-profileRouter.post("/addFunds", isAuthMiddleware, addFunds);
+profileRouter.get("/fundAccounts", isAuthMiddleware, getUserFundAccounts);
+profileRouter.post("/addFundAccount", isAuthMiddleware, addFundAccount);
 profileRouter.put("/withdrawFunds", isAuthMiddleware, withdrawFunds);
 profileRouter.get("/earnings", isAuthMiddleware, getUserEarnings);
-// profileRouter.get("/earnings/summary", isAuthMiddleware, getUserEarnings);
 
 export default profileRouter;

@@ -87,6 +87,10 @@ export async function generateOtp(
     Math.floor(100000 + Math.random() * 900000).toString();
 
   const otp = generateRandomOtp();
+
+  // ✅ Log OTP for dev
+  // console.log(`🔐 Travel OTP generation done, skipped sending in dev mode... `);
+
   const message =
     type === "receiver"
       ? `Please use OTP ${otp} to accept the Consignment from the Sender after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
@@ -134,6 +138,9 @@ export async function generateOtp(
     console.error("❌ Error sending SMS:", error);
     throw error;
   }
+
+  // For Dev mode
+  // return { otp };
 }
 
 const formatCoordinates = (coords?: GeoPoint) => {

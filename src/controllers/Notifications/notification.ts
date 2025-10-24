@@ -97,23 +97,6 @@ export const markAllRead = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Create notification (internal use)
-export const createNotification = async ({
-  userId,
-  type,
-  message,
-  meta,
-}: {
-  userId: string;
-  type: string;
-  message: string;
-  meta?: Record<string, any>;
-}) => {
-  if (!Types.ObjectId.isValid(userId)) throw new Error("Invalid userId");
-
-  return Notification.create({ userId, type, message, meta });
-};
-
 export const notificationHelper = async (
   type:
     | "bySender"

@@ -428,7 +428,7 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
     const relatedTravelDoc = carryRequest.travelId
       ? await TravelModel.findById(carryRequest.travelId)
           .select(
-            "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate vehicleNumber durationOfStay durationOfTravel status modeOfTravel travelDate availableWeight description"
+            "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate vehicleNumber durationOfStay durationOfTravel status modeOfTravel vehicleType travelDate availableWeight description"
           )
           .lean()
       : null;

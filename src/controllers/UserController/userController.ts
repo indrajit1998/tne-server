@@ -7,9 +7,11 @@ import { cookiesOption } from "../../constants/constant";
 import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
 import env from "../../lib/env";
+import logger from "../../lib/logger.js";
 import type { AuthRequest } from "../../middlewares/authMiddleware.js";
 import { User, type User as UserT } from "../../models/user.model";
 import { Verification } from "../../models/verfiication.model";
+import { createRazorpayContactId } from "../../services/razorpay.service.js";
 
 const generateRandomOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit
@@ -84,6 +86,11 @@ export const generateOtp = async (req: Request, res: Response) => {
       }
     }
 
+    // Log OTP for dev
+    // console.log(`🔐 OTP for ${validPhone}: ${otp}`);
+
+    // TODO: Uncomment below block in production to enable SMS sending
+
     // ✅ Send SMS using Pingbix
     const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
 
@@ -132,6 +139,18 @@ export const generateOtp = async (req: Request, res: Response) => {
           sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Failed to send OTP")
         );
     }
+
+    // TODO: Comment out the block in prod
+    // For dev: just send OTP back for FE logs
+    // return res
+    //   .status(CODES.OK)
+    //   .json(
+    //     sendResponse(
+    //       CODES.OK,
+    //       { phoneNumber: validPhone, otp },
+    //       "OTP generated successfully (dev mode)"
+    //     )
+    //   );
   } catch (error: any) {
     console.error(
       "❌ Error generating OTP:",
@@ -164,36 +183,6 @@ export const verifyOtp = async (req: Request, res: Response) => {
     }
 
     const validPhone = result.data;
-
-    // ✅ Dev mode shortcut (skip DB + OTP check)
-    // if (env.NODE_ENV === "development" && otp === "123456") {
-    //   console.log(`🔹 Dev mode OTP verified for ${validPhone}`);
-
-    //   let user = await User.findOne({ phoneNumber: validPhone });
-    //   if (!user) {
-    //     user = await User.create({ phoneNumber: validPhone, isVerified: true });
-    //   } else {
-    //     user.isVerified = true;
-    //     await user.save();
-    //   }
-
-    //   const token = jwt.sign(
-    //     { _id: user._id, phoneNumber: validPhone },
-    //     env.JWT_SECRET,
-    //     { expiresIn: "7d" }
-    //   );
-
-    //   return res.status(CODES.OK).json(
-    //     sendResponse(
-    //       CODES.OK,
-    //       {
-    //         token,
-    //         onboardingCompleted: user.onboardingCompleted,
-    //       },
-    //       "Phone number verified successfully (dev mode)"
-    //     )
-    //   );
-    // }
 
     const verification = await Verification.findOne({
       phoneNumber: validPhone,
@@ -267,7 +256,7 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
     }
     const { firstName, lastName, profilePictureUrl, email } = req.body;
 
-    // ✅ Required fields check
+    // Required fields check
     if (!firstName || !lastName) {
       return res
         .status(CODES.BAD_REQUEST)
@@ -280,7 +269,7 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
         );
     }
 
-    // ✅ Validate email
+    // Validate email
     if (email) {
       const resultEmail = emailSchema.safeParse(email);
       if (!resultEmail.success) {
@@ -295,7 +284,7 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
           );
       }
     }
-    // ✅ Check if user exists
+    // Check if user exists
     const user = await User.findById(userId);
     if (!user) {
       return res
@@ -303,14 +292,14 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
         .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
     }
 
-    // ✅ Check if verified
+    // Check if verified
     if (!user.isVerified) {
       return res
         .status(CODES.FORBIDDEN)
         .json(sendResponse(CODES.FORBIDDEN, null, "Phone number not verified"));
     }
 
-    // ✅ Prevent duplicate onboarding
+    // Prevent duplicate onboarding
     if (user.onboardingCompleted) {
       return res
         .status(CODES.BAD_REQUEST)
@@ -328,10 +317,41 @@ export const registerUser = async (req: AuthRequest, res: Response) => {
 
     if (email) updateData.email = email;
 
-    // ✅ Update user profile
+    // Update user profile
     const onboardedUser = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
     });
+
+    if (!onboardedUser) {
+      return res
+        .status(CODES.NOT_FOUND)
+        .json(
+          sendResponse(CODES.NOT_FOUND, null, "User not found after update")
+        );
+    }
+
+    // Generate Razorpay Customer ID if missing
+    if (!onboardedUser.razorpayCustomerId) {
+      try {
+        const razorpayCustomerId = await createRazorpayContactId(
+          `${onboardedUser.firstName} ${onboardedUser.lastName}`,
+          onboardedUser.email || "",
+          onboardedUser.phoneNumber
+        );
+
+        onboardedUser.razorpayCustomerId = razorpayCustomerId;
+        await onboardedUser.save();
+
+        logger.info(
+          `✅ Razorpay customer created successfully for user ${userId}: ${razorpayCustomerId}`
+        );
+      } catch (err) {
+        logger.error(
+          `⚠️ Failed to create Razorpay customer ID for user ${userId}: ${err}`
+        );
+        // optional: don't fail the whole onboarding, just warn
+      }
+    }
 
     const token = jwt.sign({ _id: user._id }, env.JWT_SECRET, {
       expiresIn: "7d",

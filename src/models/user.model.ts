@@ -30,7 +30,7 @@ const UserSchema = new Schema<User>(
     razorpayCustomerId: { type: String },
     isAdmin: { type: Boolean, default: false },
 
-    // ⭐ Traveller Stats
+    // Traveller Stats
     rating: { type: Number, default: 0 }, // Average rating (1–5)
     reviewCount: { type: Number, default: 0 }, // Number of reviews
     totalEarnings: { type: Number, default: 0 }, // Total ₹ earned from deliveries
