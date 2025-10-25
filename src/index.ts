@@ -20,6 +20,7 @@ import profileRoutes from "./routes/UserRouts/profile";
 import travelRoutes from "./routes/UserRouts/travel";
 import { initSocket } from "./socket";
 import paymentRouter from "./routes/Payment/payment.router";
+import travelConsignmentRouter from "./routes/TravelConsignment/travelconsignment.router";
 
 const PORT = parseInt(env.PORT, 10);
 
@@ -48,6 +49,8 @@ app.use("/api/v1/location", locationRouter);
 // publish
 app.use("/api/v1/consignment", consignmentRoutes);
 app.use("/api/v1/travel", travelRoutes);
+
+app.use("/api/v1/travel-consignment", travelConsignmentRouter);
 
 // payments
 app.use("/api/v1/payment", paymentRouter);

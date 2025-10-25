@@ -15,6 +15,7 @@ import {
   calculateSenderPay,
   calculateTravellerEarning,
   calculateVolumetricWeight,
+  formatCoordinates,
 } from "../../lib/utils";
 import { Address } from "../../models/address.model";
 import { CarryRequest } from "../../models/carryRequest.model";
@@ -96,14 +97,32 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       images,
     } = req.body;
 
+    console.log("REQ BODY OF CREATE CONSIGNMENT => ", {
+      fromAddressId,
+      toAddressId,
+      weight,
+      weightUnit,
+      dimensions,
+      sendingDate,
+      receiverName,
+      receiverPhone,
+      category,
+      subCategory,
+      description,
+      handleWithCare,
+      images,
+    });
+
     if (!senderId) {
       return res.status(401).json({ message: "Unauthorized: User ID missing" });
     }
+
     if (!fromAddressId || !toAddressId) {
       return res
         .status(400)
         .json({ message: "Both fromAddressId and toAddressId are required" });
     }
+
     if (
       !mongoose.Types.ObjectId.isValid(fromAddressId) ||
       !mongoose.Types.ObjectId.isValid(toAddressId)
@@ -137,31 +156,43 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       flatNo: toAddressObj.flatNo,
       landmark: toAddressObj.landMark,
     };
+
     const volumetricWeight = calculateVolumetricWeight(
       dimensions.length,
       dimensions.width,
       dimensions.height,
       dimensions.unit || "cm"
     );
+
+    console.log("volumetricWeight:", volumetricWeight);
+    console.log("dimensions:", dimensions);
+
     const weightInKg = Math.max(weight, volumetricWeight);
+
     console.log("Weight in Kg:", weightInKg);
+
     if (weightInKg <= 0) {
       return res.status(400).json({ message: "Invalid weight" });
     }
+
     console.log("Calculating distance between cities");
     console.log("From City:", fromAddressObj.city);
     console.log("To City:", toAddressObj.city);
+
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
     console.log("Distance:", distance?.distance ? distance.distance : 0);
+
     const trainPricing = await calculateTrainFare(
       weightInKg,
       distance?.distanceValue || 0
     );
+
     const flightPricing = await calculateFlightFare(
       weightInKg,
       distance?.distanceValue || 0
     );
     console.log("Flight Pricing:", flightPricing);
+
     const consignment = await ConsignmentModel.create({
       senderId: senderId,
       fromAddress,
@@ -369,13 +400,13 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "Carry request not found" });
     }
 
-    const formatCoordinates = (coords?: GeoPoint) => {
-      if (!coords || !Array.isArray(coords.coordinates)) return null;
-      return {
-        latitude: coords.coordinates[1],
-        longitude: coords.coordinates[0],
-      };
-    };
+    // const formatCoordinates = (coords?: GeoPoint) => {
+    //   if (!coords || !Array.isArray(coords.coordinates)) return null;
+    //   return {
+    //     latitude: coords.coordinates[1],
+    //     longitude: coords.coordinates[0],
+    //   };
+    // };
 
     function isPopulatedConsignment(obj: unknown): obj is PopulatedConsignment {
       return !!obj && typeof obj === "object" && "fromAddress" in obj;
@@ -394,10 +425,8 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
       : null;
 
     // related travel fetch + format
-    const relatedTravelDoc = carryRequest.travellerId
-      ? await TravelModel.findOne({
-          travelerId: carryRequest.travellerId._id,
-        })
+    const relatedTravelDoc = carryRequest.travelId
+      ? await TravelModel.findById(carryRequest.travelId)
           .select(
             "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate vehicleNumber durationOfStay durationOfTravel status modeOfTravel travelDate availableWeight description"
           )
@@ -909,9 +938,9 @@ export const updateTravelConsignmentStatus = async (
   res: Response
 ) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
+    session.startTransaction();
     const { travelConsignmentId } = req.params;
     const { newStatus, otp } = req.body;
 
@@ -937,6 +966,19 @@ export const updateTravelConsignmentStatus = async (
 
     if (!carryRequest) {
       return res.status(404).json({ message: "Carry request not found" });
+    }
+
+    // Fetch Travel to check if travel has started
+    const travel = await TravelModel.findById(travelConsignment.travelId);
+    if (!travel) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Associated travel not found" });
+    }
+
+    if (travel.status !== "ongoing") {
+      return res
+        .status(400)
+        .json({ message: "Cannot update consignment before travel starts" });
     }
 
     // In transit flow
@@ -1110,8 +1152,9 @@ export const updateTravelConsignmentStatus = async (
     }
   } catch (error) {
     await session.abortTransaction();
-    session.endSession();
     console.error("❌ Error in updating travel consignment status:", error);
     return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    session.endSession();
   }
 };

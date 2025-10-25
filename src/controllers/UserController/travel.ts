@@ -5,6 +5,7 @@ import { formatDuration } from "../../lib/utils";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
 import { Address } from "../../models/address.model";
 import { TravelModel } from "../../models/travel.model";
+import TravelConsignments from "../../models/travelconsignments.model";
 import { getDistance } from "../../services/maps.service";
 
 export const createTravel = async (req: AuthRequest, res: Response) => {
@@ -196,6 +197,11 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     if (travelMode) query.$and.push({ modeOfTravel: travelMode });
 
     const travels = await TravelModel.find(query)
+      .populate({
+        path: "travelerId",
+        select:
+          "firstName lastName phoneNumber profilePictureUrl rating reviewCount",
+      })
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
@@ -236,5 +242,108 @@ export const locateTravelbyid = async (req: AuthRequest, res: Response) => {
     res
       .status(500)
       .json({ message: "Internal server error while fetching travel by ID" });
+  }
+};
+
+export const startTravel = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+    }
+
+    const { travelId } = req.params;
+
+    const travel = await TravelModel.findById(travelId);
+    if (!travel) return res.status(404).json({ message: "Travel not found" });
+
+    if (travel.travelerId.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // ✅ Only allow starting if current status is 'upcoming'
+    if (travel.status !== "upcoming") {
+      return res.status(400).json({ message: "Travel is not upcoming" });
+    }
+
+    // ✅ Update to 'ongoing'
+    travel.status = "ongoing";
+    await travel.save();
+
+    return res.status(200).json({ message: "Travel started", travel });
+  } catch (err) {
+    console.error("Error starting travel:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const endTravel = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+    }
+
+    const { travelId } = req.params;
+
+    const travel = await TravelModel.findById(travelId);
+    if (!travel) return res.status(404).json({ message: "Travel not found" });
+    if (travel.travelerId.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    if (travel.status !== "ongoing") {
+      console.log("yaha se h");
+      return res.status(400).json({ message: "Travel is not ongoing" });
+    }
+
+    const pendingConsignments = await TravelConsignments.find({
+      travelId,
+      status: { $ne: "delivered" },
+    });
+
+    if (pendingConsignments.length > 0) {
+      return res.status(400).json({
+        message: "Cannot end travel before all consignments are delivered",
+      });
+    }
+
+    travel.status = "completed";
+    await travel.save();
+
+    return res.status(200).json({ message: "Travel ended", travel });
+  } catch (err) {
+    console.error("Error ending travel:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const cancelTravel = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+    }
+
+    const { travelId } = req.params;
+
+    const travel = await TravelModel.findById(travelId);
+    if (!travel) return res.status(404).json({ message: "Travel not found" });
+    if (travel.travelerId.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+    if (travel.status !== "upcoming") {
+      return res
+        .status(400)
+        .json({ message: "Only upcoming travels can be cancelled" });
+    }
+
+    travel.status = "cancelled";
+    await travel.save();
+
+    return res.status(200).json({ message: "Travel cancelled", travel });
+  } catch (err) {
+    console.error("Error cancelling travel:", err);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

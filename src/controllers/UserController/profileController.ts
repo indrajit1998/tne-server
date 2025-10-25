@@ -39,21 +39,58 @@ type Coordinates = {
   coordinates: [number, number];
 };
 
-const isPopulatedConsignment = (
-  consignment: unknown
-): consignment is {
+// Define a type for populated user
+interface PopulatedUser {
   _id: Types.ObjectId;
-  fromCoordinates?: Coordinates;
-  toCoordinates?: Coordinates;
-  [key: string]: unknown;
-} => {
+  firstName: string;
+  lastName: string;
+  phoneNumber?: string;
+  profilePictureUrl?: string;
+}
+
+// Define type for assigned traveller
+interface AssignedTraveller {
+  _id: Types.ObjectId;
+  name: string;
+  travelId: Types.ObjectId;
+  phoneNumber?: string;
+  profilePictureUrl?: string;
+}
+
+// const isPopulatedConsignment = (
+//   consignment: unknown
+// ): consignment is {
+//   _id: Types.ObjectId;
+//   fromCoordinates?: Coordinates;
+//   toCoordinates?: Coordinates;
+//   [key: string]: unknown;
+// } => {
+//   return (
+//     !!consignment &&
+//     typeof consignment === "object" &&
+//     "_id" in consignment &&
+//     !("_bsontype" in consignment) // ObjectId check (avoids ObjectId masquerading)
+//   );
+// };
+
+// Helper function remains the same
+function isPopulatedTravel(travel: any): boolean {
   return (
-    !!consignment &&
+    travel &&
+    typeof travel === "object" &&
+    "_id" in travel &&
+    "fromCoordinates" in travel
+  );
+}
+
+function isPopulatedConsignment(consignment: any): boolean {
+  return (
+    consignment &&
     typeof consignment === "object" &&
     "_id" in consignment &&
-    !("_bsontype" in consignment) // ObjectId check (avoids ObjectId masquerading)
+    "fromCoordinates" in consignment
   );
-};
+}
 
 const formatCoordinates = (coords?: Coordinates) => {
   if (!coords || !Array.isArray(coords.coordinates)) return null;
@@ -106,7 +143,7 @@ export const getTravelAndConsignment = async (
         .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
     }
 
-    // Fetch user's travels
+    // ✅ Fetch user's travels
     const travels = await TravelModel.find({ travelerId: userId })
       .populate(
         "travelerId",
@@ -118,10 +155,14 @@ export const getTravelAndConsignment = async (
     // For each travel, attach consignments linked through TravelConsignments
     const enrichedTravels = await Promise.all(
       travels.map(async (travel) => {
-        const consignmentsLinked = await TravelConsignments.find({
+        const travelConsignmentsLinked = await TravelConsignments.find({
           travelId: travel._id,
         })
-          .populate("consignmentId")
+          .populate({
+            path: "consignmentId",
+            select:
+              "fromAddress toAddress fromCoordinates toCoordinates weight dimensions category description status receiverName receiverPhone",
+          })
           .lean();
 
         // Format coordinates for travel
@@ -131,9 +172,9 @@ export const getTravelAndConsignment = async (
             travel.fromCoordinates as Coordinates
           ),
           toCoordinates: formatCoordinates(travel.toCoordinates as Coordinates),
-          consignments: consignmentsLinked
-            .map((t) => {
-              const consignment = t.consignmentId;
+          consignments: travelConsignmentsLinked
+            .map((tc) => {
+              const consignment = tc.consignmentId as any;
 
               if (!isPopulatedConsignment(consignment)) return null;
 
@@ -141,6 +182,9 @@ export const getTravelAndConsignment = async (
                 ...consignment,
                 fromCoordinates: formatCoordinates(consignment.fromCoordinates),
                 toCoordinates: formatCoordinates(consignment.toCoordinates),
+                // ✅ Include travelConsignmentId
+                travelConsignmentId: tc._id,
+                travelConsignmentStatus: tc.status,
               };
             })
             .filter(Boolean),
@@ -150,21 +194,25 @@ export const getTravelAndConsignment = async (
       })
     );
 
-    // Get all consignments created by this user (sender)
+    // ✅ Fetch user's consignments
     const consignments = await ConsignmentModel.find({ senderId: userId })
+      .populate(
+        "senderId",
+        "firstName lastName email phoneNumber profilePictureUrl"
+      )
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log("connnn here => ", consignments);
-
-    //  For each consignment, check if it’s assigned to any traveler
+    // For each consignment, attach travels linked through TravelConsignments
     const enrichedConsignments = await Promise.all(
       consignments.map(async (consignment) => {
-        const tc = await TravelConsignments.findOne({
+        const travelConsignmentsLinked = await TravelConsignments.find({
           consignmentId: consignment._id,
         })
           .populate({
             path: "travelId",
+            select:
+              "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate modeOfTravel status travelerId",
             populate: {
               path: "travelerId",
               select:
@@ -173,21 +221,8 @@ export const getTravelAndConsignment = async (
           })
           .lean();
 
-        const assignedTraveller =
-          tc?.travelId &&
-          typeof tc.travelId === "object" &&
-          "travelerId" in tc.travelId &&
-          tc.travelId.travelerId
-            ? {
-                _id: (tc.travelId.travelerId as any)._id,
-                name: `${(tc.travelId.travelerId as any).firstName} ${
-                  (tc.travelId.travelerId as any).lastName
-                }`,
-                travelId: (tc.travelId as any)._id,
-              }
-            : null;
-
-        return {
+        // Format coordinates for consignment
+        const formattedConsignment = {
           ...consignment,
           fromCoordinates: formatCoordinates(
             consignment.fromCoordinates as Coordinates
@@ -195,8 +230,25 @@ export const getTravelAndConsignment = async (
           toCoordinates: formatCoordinates(
             consignment.toCoordinates as Coordinates
           ),
-          assignedTraveller,
+          travels: travelConsignmentsLinked
+            .map((tc) => {
+              const travel = tc.travelId as any;
+
+              if (!isPopulatedTravel(travel)) return null;
+
+              return {
+                ...travel,
+                fromCoordinates: formatCoordinates(travel.fromCoordinates),
+                toCoordinates: formatCoordinates(travel.toCoordinates),
+                // ✅ Include travelConsignmentId
+                travelConsignmentId: tc._id,
+                travelConsignmentStatus: tc.status,
+              };
+            })
+            .filter(Boolean),
         };
+
+        return formattedConsignment;
       })
     );
 
@@ -210,7 +262,7 @@ export const getTravelAndConsignment = async (
         )
       );
   } catch (error) {
-    console.error("Error fetching user profile:", error);
+    console.error("Error fetching travel and consignment data:", error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
@@ -433,6 +485,51 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
           CODES.INTERNAL_SERVER_ERROR,
           null,
           "Something went wrong while withdrawing funds"
+        )
+      );
+  }
+};
+
+export const getUserEarnings = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+
+    const earnings = await Earning.find({
+      userId,
+      status: "completed",
+      is_withdrawn: false,
+    })
+      .populate("consignmentId", "description fromAddress toAddress")
+      .populate("travelId", "fromAddress toAddress modeOfTravel")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const totalEarnings = earnings.reduce(
+      (sum, earning) => sum + (earning.amount || 0),
+      0
+    );
+
+    return res.json(
+      sendResponse(CODES.OK, {
+        totalEarnings,
+        availableForWithdrawal: totalEarnings,
+        earnings,
+      })
+    );
+  } catch (error) {
+    console.error("❌ Error fetching user earnings:", error);
+    return res
+      .status(CODES.INTERNAL_SERVER_ERROR)
+      .json(
+        sendResponse(
+          CODES.INTERNAL_SERVER_ERROR,
+          null,
+          "Internal server error while fetching earnings"
         )
       );
   }
