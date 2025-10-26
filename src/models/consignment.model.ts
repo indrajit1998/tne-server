@@ -63,6 +63,7 @@ interface Consignment {
     | "in-transit"
     | "delivered"
     | "cancelled"
+    | "expired"
     | "assigned";
   createdAt?: Date;
   updatedAt?: Date;

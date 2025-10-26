@@ -6,9 +6,15 @@ interface Payment {
   travelId: Types.ObjectId;
   type: "sender_pay" | "traveller_earning" | "platform_commission";
   amount: number;
-  status: "pending" | "completed_pending_webhook" | "completed" | "failed";
+  status:
+    | "pending"
+    | "completed_pending_webhook"
+    | "completed"
+    | "failed"
+    | "cancelled";
   createdAt: Date;
   updatedAt: Date;
+  expiresAt: Date;
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
 }
@@ -30,9 +36,21 @@ const paymentSchema = new Schema<Payment>(
     amount: { type: Number, required: true },
     status: {
       type: String,
-      enum: ["pending", "completed_pending_webhook", "completed", "failed"],
+      enum: [
+        "pending",
+        "completed_pending_webhook",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
       default: "pending",
       required: true,
+    },
+    expiresAt: {
+      type: Date,
+      required: true,
+      // Set default to 20 minutes from now
+      default: () => new Date(Date.now() + 20 * 60 * 1000),
     },
     razorpayPaymentId: { type: String },
     razorpayOrderId: { type: String },

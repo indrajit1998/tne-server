@@ -149,7 +149,12 @@ export const getTravelAndConsignment = async (
 
     const now = new Date();
 
-    //  1: Persist expired travels
+    // ============================================================
+    //  EXPIRATION LOGIC
+    // ============================================================
+
+    // 1: Expire travels that never started
+    // Only expire "upcoming" travels that missed their expectedStartDate
     await TravelModel.updateMany(
       {
         status: "upcoming",
@@ -158,7 +163,9 @@ export const getTravelAndConsignment = async (
       { $set: { status: "expired" } }
     );
 
-    // 2: Persist expired consignments
+    // 2: Expire consignments that were never assigned
+    // Expire "published" and "requested" consignments past their sendingDate
+    // Optional: We can add 6-hour grace period by using new Date(now.getTime() - 6 * 60 * 60 * 1000)
     await ConsignmentModel.updateMany(
       {
         status: { $in: ["published", "requested"] },
@@ -166,6 +173,11 @@ export const getTravelAndConsignment = async (
       },
       { $set: { status: "expired" } }
     );
+
+    // Note: We do NOT expire:
+    // - Travels with status "ongoing" (they're actively traveling)
+    // - Consignments with status "assigned" or "in-transit" (delivery in progress)
+    // This ensures active operations are never interrupted
 
     // 3: Fetch user's travels
     const travels = await TravelModel.find({ travelerId: userId })
@@ -176,7 +188,7 @@ export const getTravelAndConsignment = async (
       .sort({ createdAt: -1 })
       .lean();
 
-    //  4: Enrich travels with consignments
+    // 4: Enrich travels with consignments
     const enrichedTravels = await Promise.all(
       travels.map(async (travel) => {
         const travelConsignmentsLinked = await TravelConsignments.find({
@@ -213,7 +225,7 @@ export const getTravelAndConsignment = async (
       })
     );
 
-    //  5: Fetch user's consignments
+    // 5: Fetch user's consignments
     const consignments = await ConsignmentModel.find({ senderId: userId })
       .populate(
         "senderId",
@@ -222,7 +234,7 @@ export const getTravelAndConsignment = async (
       .sort({ createdAt: -1 })
       .lean();
 
-    //  6: Enrich consignments with travels
+    // 6: Enrich consignments with travels
     const enrichedConsignments = await Promise.all(
       consignments.map(async (consignment) => {
         const travelConsignmentsLinked = await TravelConsignments.find({
@@ -266,7 +278,7 @@ export const getTravelAndConsignment = async (
       })
     );
 
-    //  7: Return response (FE shape unchanged)
+    // 7: Return response
     return res
       .status(CODES.OK)
       .json(

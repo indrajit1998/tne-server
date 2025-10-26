@@ -39,7 +39,7 @@ interface Travel {
     hours: number;
   };
   durationOfTravel: string;
-  status: "upcoming" | "ongoing" | "completed" | "cancelled";
+  status: "upcoming" | "ongoing" | "completed" | "cancelled" | "expired";
   createdAt?: Date;
   updatedAt?: Date;
 }
