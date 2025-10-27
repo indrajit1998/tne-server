@@ -60,10 +60,12 @@ interface Consignment {
   status:
     | "published"
     | "requested"
+    | "assigned"
+    |"to_handover"
     | "in-transit"
     | "delivered"
     | "cancelled"
-    | "assigned";
+    | "expired";
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -190,6 +192,7 @@ const consignmentSchema = new Schema<Consignment>(
         "published",
         "requested",
         "in-transit",
+        "to_handover",
         "delivered",
         "cancelled",
         "assigned",
