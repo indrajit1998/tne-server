@@ -61,7 +61,7 @@ interface Consignment {
     | "published"
     | "requested"
     | "assigned"
-    |"to_handover"
+    | "to_handover"
     | "in-transit"
     | "delivered"
     | "cancelled"

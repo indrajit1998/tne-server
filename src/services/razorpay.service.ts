@@ -235,11 +235,18 @@ export async function createPayout(
     // safe to typecast now
     return data as RazorpayPayoutResponse; // returns payout object which includes id
   } catch (error: any) {
-    logger.error(
-      `Error creating payout: ${error.response?.data || error.message}`
-    );
+    const errData =
+      error.response?.data ||
+      error.response ||
+      error.message ||
+      error.toString();
+
+    logger.error("Error creating payout: " + JSON.stringify(errData, null, 2));
+
     throw new Error(
-      error.response?.data?.error?.description || "Failed to create payout"
+      error.response?.data?.error?.description ||
+        error.message ||
+        "Failed to create payout"
     );
   }
 }

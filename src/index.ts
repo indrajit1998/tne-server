@@ -15,12 +15,13 @@ import consignmentRoutes from "./routes/Consignment/consignment";
 import feedbackOrContactRoute from "./routes/feedbackOrContact/feedbackOrContact.route";
 import locationRouter from "./routes/location/location.router";
 import notificationRouter from "./routes/Notifications/notification.router";
-import authRoutes from "./routes/UserRouts/auth";
-import profileRoutes from "./routes/UserRouts/profile";
-import travelRoutes from "./routes/UserRouts/travel";
-import { initSocket } from "./socket";
 import paymentRouter from "./routes/Payment/payment.router";
 import travelConsignmentRouter from "./routes/TravelConsignment/travelconsignment.router";
+import authRoutes from "./routes/UserRouts/auth";
+import profileRoutes from "./routes/UserRouts/profile";
+import ratingRouter from "./routes/UserRouts/rating";
+import travelRoutes from "./routes/UserRouts/travel";
+import { initSocket } from "./socket";
 
 const PORT = parseInt(env.PORT, 10);
 
@@ -42,6 +43,7 @@ app.use(cookieParser());
 // Auth and profile
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", profileRoutes);
+app.use("/api/v1/rating", ratingRouter);
 
 // search location
 app.use("/api/v1/location", locationRouter);

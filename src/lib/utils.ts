@@ -1,6 +1,5 @@
 import axios from "axios";
 import FormData from "form-data";
-
 interface GeoPoint {
   type: "Point";
   coordinates: [number, number];

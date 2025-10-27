@@ -6,6 +6,7 @@ import ConsignmentModel from "../../models/consignment.model";
 
 import mongoose from "mongoose";
 
+import { getDateRange } from "../../lib/dateUtils";
 import logger from "../../lib/logger";
 import {
   calculateFlightFare,
@@ -259,6 +260,15 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
         .json({ message: "fromstate, tostate and date are required" });
     }
 
+    logger.info(
+      "Inside locateConsignment: = >" +
+        {
+          fromstate,
+          tostate,
+          date,
+        }
+    );
+
     // Normalize and tokenize
     const tokenize = (str: string) =>
       str
@@ -272,11 +282,26 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
     const fromRegexes = fromTokens.map((token) => new RegExp(token, "i"));
     const toRegexes = toTokens.map((token) => new RegExp(token, "i"));
 
-    // Define start and end of day
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(startOfDay.getDate() + 1);
+    // Parse date using utility
+    let startOfDay: Date, endOfDay: Date;
+    try {
+      ({ startOfDay, endOfDay } = getDateRange(date));
+
+      logger.info(
+        {
+          originalDate: date,
+          startOfDay: startOfDay.toISOString(),
+          endOfDay: endOfDay.toISOString(),
+        },
+        "Parsed date range"
+      );
+    } catch (error) {
+      logger.error(`Date parsing error: ${error}`);
+      return res.status(400).json({
+        message: `Invalid date format: ${date}. Expected DD/MM/YYYY (e.g., 25/11/2025)`,
+        error: error instanceof Error ? error.message : "Date parsing failed",
+      });
+    }
 
     logger.info(
       `🔍 Locating consignments from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()}`
@@ -863,6 +888,14 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
     // Determine who is rejecting
     const isTravellerRejecting =
       carryRequest.travellerId.toString() === userId.toString();
+    const isSenderRejecting =
+      carryRequest.requestedBy.toString() === userId.toString();
+
+    if (!isTravellerRejecting && !isSenderRejecting) {
+      return res.status(403).json({
+        message: "You are not authorized to reject this request",
+      });
+    }
 
     carryRequest.status = "rejected";
     await carryRequest.save();
@@ -890,7 +923,7 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       requestedBy: carryRequest.requestedBy.toString(),
       travellerName,
       rejectedById: userId.toString(),
-      rejectedByName: isTravellerRejecting ? senderName : travellerName, // FIXED
+      rejectedByName: isTravellerRejecting ? travellerName : senderName, // FIXED
       status: "rejected" as const,
       senderPayAmount: carryRequest.senderPayAmount,
       travellerEarning: carryRequest.travellerEarning,
@@ -905,7 +938,7 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       userId: targetUserId,
       title: "Carry request update",
       message: `${
-        isTravellerRejecting ? senderName : travellerName
+        isTravellerRejecting ? travellerName : senderName
       } has rejected your carry request`,
       typeOfNotif: "consignment",
       relatedConsignmentId: carryRequest.consignmentId,

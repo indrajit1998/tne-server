@@ -9,7 +9,7 @@ export interface PayoutT {
   razorpayPayoutId: string;
   razorpayPaymentId?: string;
   failureReason?: string;
-  clientPayoutId: Types.ObjectId;
+  clientPayoutId: string;
   earningIds: Types.ObjectId[];
   notes?: any;
   createdAt?: Date;
@@ -26,7 +26,7 @@ const payoutSchema = new Schema<PayoutDoc>(
     consignmentId: { type: Schema.Types.ObjectId, ref: "Consignment" },
     amount: { type: Number, required: true },
     clientPayoutId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       required: true,
       unique: true,
     },

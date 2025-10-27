@@ -39,8 +39,36 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       consignmentId: carryRequest.consignmentId,
       status: "pending",
     });
+
+    const now = new Date();
+
+    // If pending payment exists
     if (existingPayment) {
-      return res.status(400).json({ message: "Payment already initiated" });
+      // Check if the payment order has expired (15 minutes validity)
+      if (existingPayment.expiresAt > now) {
+        // Order is still valid - return the existing order for retry
+        logger.info("Reusing existing valid payment order");
+        return res.status(200).json({
+          message: "Payment order already exists and is valid",
+          order: {
+            id: existingPayment.razorpayOrderId,
+            amount: existingPayment.amount * 100,
+            currency: "INR",
+          },
+          paymentId: existingPayment._id,
+          isRetry: true, // Flag to indicate this is a retry
+        });
+      } else {
+        // Order has expired - mark as cancelled and create new one
+        logger.info("Existing payment order expired, creating new one");
+        session.startTransaction();
+
+        existingPayment.status = "cancelled";
+        await existingPayment.save({ session });
+
+        await session.commitTransaction();
+        // Continue to create new payment below
+      }
     }
 
     // Create Razorpay order FIRST (before transaction)
@@ -64,6 +92,9 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
 
     // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
 
+    // Calculate expiry time (15 minutes from now)
+    const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
+
     //  Handle the array destructuring properly
     const createdPayments = await Payment.create(
       [
@@ -75,6 +106,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
           amount: carryRequest.senderPayAmount,
           status: "pending",
           razorpayOrderId: orderResponse.data.id,
+          expiresAt,
         },
       ],
       { session }
@@ -91,6 +123,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       message: "Payment initiated",
       order: orderResponse.data,
       paymentId: paymentDoc._id,
+      isRetry: false,
     });
   } catch (error: any) {
     await session.abortTransaction();
@@ -111,6 +144,25 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
 
     const payment = await Payment.findById(paymentId);
     if (!payment) return res.status(404).json({ message: "Payment not found" });
+
+    // Check if payment was cancelled (user abandoned it)
+    if (payment.status === "cancelled") {
+      return res.status(400).json({
+        message: "This payment was cancelled. Please initiate a new payment.",
+      });
+    }
+
+    // Check if payment has expired
+    if (payment.expiresAt < new Date()) {
+      session.startTransaction();
+      payment.status = "cancelled";
+      await payment.save({ session });
+      await session.commitTransaction();
+
+      return res.status(400).json({
+        message: "Payment order has expired. Please initiate a new payment.",
+      });
+    }
 
     const generatedSignature = crypto
       .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
@@ -336,20 +388,36 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                     status: "pending",
                     is_withdrawn: false,
                   },
-                  {
-                    userId: null, // Platform commission
-                    travelId: payment.travelId,
-                    consignmentId: payment.consignmentId,
-                    amount: platformCommission,
-                    status: "pending",
-                    is_withdrawn: false,
-                    type: "platform_commission",
-                  },
                 ],
                 { session }
               );
             } catch (error) {
               console.error("❌ Failed to create Earning record:", error);
+            }
+
+            // Create platform commission payment record
+            try {
+              // ✅ Create platform commission payment record
+              await Payment.create(
+                [
+                  {
+                    userId: null, // Platform has no userId
+                    consignmentId: payment.consignmentId,
+                    travelId: payment.travelId,
+                    type: "platform_commission",
+                    amount: platformCommission, // Commission
+                    status: "completed", // Instantly completed when sender pays
+                    razorpayOrderId: payment.razorpayOrderId, // Link to original order
+                    razorpayPaymentId: razorpayPaymentId,
+                  },
+                ],
+                { session }
+              );
+            } catch (error) {
+              console.error(
+                "❌ Failed to create platoform commission payment record:",
+                error
+              );
             }
           }
 

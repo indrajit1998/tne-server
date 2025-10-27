@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import mongoose from "mongoose";
+import { getDateRange } from "../../lib/dateUtils";
 import logger from "../../lib/logger";
 import { formatDuration } from "../../lib/utils";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
@@ -142,15 +143,16 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    logger.info(
-      "DATA BEING SENT (IN locateTravel): => " +
-        {
-          fromstate,
-          tostate,
-          date,
-          modeOfTravel,
-        }
-    );
+    // Correct way
+    // logger.info(
+    //   {
+    //     fromstate,
+    //     tostate,
+    //     date,
+    //     modeOfTravel,
+    //   },
+    //   "DATA BEING SENT (IN locateTravel)"
+    // );
 
     // Normalize and tokenize for flexible partial matching
     const tokenize = (str: string) =>
@@ -165,11 +167,30 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     const fromRegexes = fromTokens.map((t) => new RegExp(t, "i"));
     const toRegexes = toTokens.map((t) => new RegExp(t, "i"));
 
-    // Date range (whole day)
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(startOfDay.getDate() + 1);
+    // logger.info("before date");
+
+    // Parse date using utility
+    let startOfDay: Date, endOfDay: Date;
+    try {
+      ({ startOfDay, endOfDay } = getDateRange(date));
+
+      // logger.info(
+      //   {
+      //     originalDate: date,
+      //     startOfDay: startOfDay.toISOString(),
+      //     endOfDay: endOfDay.toISOString(),
+      //   },
+      //   "Parsed date range"
+      // );
+    } catch (error) {
+      logger.error(`Date parsing error: ${error}`);
+      return res.status(400).json({
+        message: `Invalid date format: ${date}. Expected DD/MM/YYYY (e.g., 25/11/2025)`,
+        error: error instanceof Error ? error.message : "Date parsing failed",
+      });
+    }
+
+    // logger.info("after date..");
 
     let travelMode: string | undefined;
 
@@ -190,11 +211,15 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       travelMode = undefined;
     }
 
-    logger.info(
-      `🔍 Locating travels from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()} ${
-        travelMode ? `(mode: ${travelMode})` : ""
-      }`
-    );
+    // logger.info("after mode of travel..");
+
+    // logger.info(
+    //   `🔍 Locating travels from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()} ${
+    //     travelMode ? `(mode: ${travelMode})` : ""
+    //   }`
+    // );
+
+    // logger.info("afterlogger of locating travels..");
 
     const query: any = {
       $and: [
@@ -220,7 +245,11 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       ],
     };
 
+    // logger.info("before travelmode if..");
+
     if (travelMode) query.$and.push({ modeOfTravel: travelMode });
+
+    // logger.info("after travelmode if..");
 
     const travels = await TravelModel.find(query)
       .populate({
@@ -231,6 +260,8 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
+
+    // logger.info("after travels query..");
 
     if (!travels.length) {
       logger.info(
