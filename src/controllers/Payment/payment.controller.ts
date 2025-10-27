@@ -388,20 +388,36 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                     status: "pending",
                     is_withdrawn: false,
                   },
-                  {
-                    userId: null, // Platform commission
-                    travelId: payment.travelId,
-                    consignmentId: payment.consignmentId,
-                    amount: platformCommission,
-                    status: "pending",
-                    is_withdrawn: false,
-                    type: "platform_commission",
-                  },
                 ],
                 { session }
               );
             } catch (error) {
               console.error("❌ Failed to create Earning record:", error);
+            }
+
+            // Create platform commission payment record
+            try {
+              // ✅ Create platform commission payment record
+              await Payment.create(
+                [
+                  {
+                    userId: null, // Platform has no userId
+                    consignmentId: payment.consignmentId,
+                    travelId: payment.travelId,
+                    type: "platform_commission",
+                    amount: platformCommission, // Commission
+                    status: "completed", // Instantly completed when sender pays
+                    razorpayOrderId: payment.razorpayOrderId, // Link to original order
+                    razorpayPaymentId: razorpayPaymentId,
+                  },
+                ],
+                { session }
+              );
+            } catch (error) {
+              console.error(
+                "❌ Failed to create platoform commission payment record:",
+                error
+              );
             }
           }
 

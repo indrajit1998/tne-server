@@ -353,6 +353,52 @@ export const createRazorpayCustomerId = async (
   }
 };
 
+export const getUserBankDetails = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+
+    const user = await User.findById(userId).select("bankDetails").lean();
+
+    if (!user || !user.bankDetails) {
+      return res
+        .status(CODES.NOT_FOUND)
+        .json(sendResponse(CODES.NOT_FOUND, null, "Bank details not found"));
+    }
+
+    console.log("BANK DETAILS IN BE => ", user.bankDetails);
+
+    // Return masked bank details
+    return res.status(CODES.OK).json(
+      sendResponse(CODES.OK, {
+        accountHolderName: user.bankDetails.accountHolderName,
+        accountNumber: user.bankDetails.accountNumber, // already masked
+        ifscCode: user.bankDetails.ifscCode,
+        bankName: user.bankDetails.bankName,
+        branch: user.bankDetails.branch,
+        isVerified: user.bankDetails.isVerified,
+        razorpayFundAccountId: user.bankDetails.razorpayFundAccountId,
+      })
+    );
+  } catch (error) {
+    logger.error("Error fetching bank details:" + error);
+    return res
+      .status(CODES.INTERNAL_SERVER_ERROR)
+      .json(
+        sendResponse(
+          CODES.INTERNAL_SERVER_ERROR,
+          null,
+          "Something went wrong while fetching bank details"
+        )
+      );
+  }
+};
+
+// Get user's bank details from profile
 export const getUserFundAccounts = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
@@ -387,11 +433,195 @@ export const getUserFundAccounts = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Save or update bank details in profile
+export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
+  const session = await mongoose.startSession();
+
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+
+    const { accountHolderName, accountNumber, ifscCode, bankName, branch } =
+      req.body;
+
+    // Validation
+    if (
+      !accountHolderName ||
+      !accountNumber ||
+      !ifscCode ||
+      !bankName ||
+      !branch
+    ) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(
+          sendResponse(CODES.BAD_REQUEST, null, "All bank details are required")
+        );
+    }
+
+    // Validate IFSC
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode.toUpperCase())) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(
+          sendResponse(CODES.BAD_REQUEST, null, "Invalid IFSC code format")
+        );
+    }
+
+    // Validate account number
+    if (!/^\d{9,18}$/.test(accountNumber)) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(
+          sendResponse(
+            CODES.BAD_REQUEST,
+            null,
+            "Invalid account number (9-18 digits)"
+          )
+        );
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res
+        .status(CODES.NOT_FOUND)
+        .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
+    }
+
+    // Hash the account number for uniqueness check
+    const accountHash = crypto
+      .createHash("sha256")
+      .update(accountNumber)
+      .digest("hex");
+
+    // Mask account number
+    const maskedAccountNumber =
+      accountNumber.length > 4
+        ? "****" + accountNumber.slice(-4)
+        : accountNumber;
+
+    session.startTransaction();
+
+    // Create Razorpay contact if not exists
+    let razorpayContactId = user.razorpayCustomerId;
+    if (!razorpayContactId) {
+      razorpayContactId = await createRazorpayContactId(
+        `${user.firstName} ${user.lastName}`,
+        user.email || "",
+        user.phoneNumber
+      );
+      user.razorpayCustomerId = razorpayContactId;
+    }
+
+    // Create Razorpay fund account
+    let razorpayFundAccountId: string | undefined;
+
+    // Check if fund account already exists in PayoutAccounts
+    const existingFundAccount = await PayoutAccountsModel.findOne({
+      userId,
+      accountHash,
+      accountType: "bank_account",
+    }).session(session);
+
+    if (existingFundAccount) {
+      razorpayFundAccountId = existingFundAccount.razorpayFundAccountId;
+    } else {
+      // Create new fund account on Razorpay
+      razorpayFundAccountId = await createBankFundAccount(
+        razorpayContactId,
+        accountHolderName,
+        ifscCode.toUpperCase(),
+        accountNumber
+      );
+
+      // Save to PayoutAccounts table
+      await PayoutAccountsModel.create(
+        [
+          {
+            userId,
+            razorpayContactId,
+            razorpayFundAccountId,
+            displayName: `${user.firstName} ${user.lastName}`,
+            accountType: "bank_account",
+            accountNumber: maskedAccountNumber,
+            bankName,
+            branch,
+            accountHash,
+          },
+        ],
+        { session }
+      );
+    }
+
+    // Update user's bank details
+    user.bankDetails = {
+      accountHolderName,
+      accountNumber: maskedAccountNumber,
+      ifscCode: ifscCode.toUpperCase(),
+      bankName,
+      branch,
+      accountHash,
+      razorpayFundAccountId,
+      isVerified: true,
+      createdAt: user.bankDetails?.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+
+    await user.save({ session });
+    await session.commitTransaction();
+
+    logger.info("Bank details saved successfully for user:" + userId);
+
+    return res.status(CODES.OK).json(
+      sendResponse(
+        CODES.OK,
+        {
+          accountHolderName: user.bankDetails.accountHolderName,
+          accountNumber: user.bankDetails.accountNumber,
+          ifscCode: user.bankDetails.ifscCode,
+          bankName: user.bankDetails.bankName,
+          branch: user.bankDetails.branch,
+          isVerified: user.bankDetails.isVerified,
+          razorpayFundAccountId: user.bankDetails.razorpayFundAccountId,
+        },
+        "Bank details saved successfully"
+      )
+    );
+  } catch (error: any) {
+    await session.abortTransaction();
+    logger.error("Error saving bank details:" + error);
+
+    const status = error?.status || CODES.INTERNAL_SERVER_ERROR;
+    const message = error?.message || "Failed to save bank details";
+
+    return res.status(status).json(sendResponse(status, null, message));
+  } finally {
+    session.endSession();
+  }
+};
+
 export const addFundAccount = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
 
   try {
     const { type, details } = req.body;
+
+    // Only support bank_account now (keeping code extensible for future)
+    if (type !== "bank_account") {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(
+          sendResponse(
+            CODES.BAD_REQUEST,
+            null,
+            "Only bank account is supported"
+          )
+        );
+    }
 
     if (!type || !details) {
       return res
@@ -510,7 +740,7 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
           accountNumber
         );
 
-        // Save in DB
+        // Save in PayoutAccounts
         const newAccount = await PayoutAccountsModel.create(
           [
             {
@@ -531,6 +761,22 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
             status: CODES.INTERNAL_SERVER_ERROR,
             message: "Failed to create fund account",
           };
+
+        // SYNC: Update user's bank details in profile
+        user.bankDetails = {
+          accountHolderName: name,
+          accountNumber: maskedDetails.accountNumber,
+          ifscCode: ifsc.toUpperCase(),
+          bankName,
+          branch,
+          accountHash,
+          razorpayFundAccountId: fundAccountId,
+          isVerified: true,
+          createdAt: user.bankDetails?.createdAt || new Date(),
+          updatedAt: new Date(),
+        };
+
+        await user.save({ session });
 
         return newAccount[0];
       } else if (type === "vpa") {
@@ -616,6 +862,9 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       typeof rawUser === "string"
         ? rawUser
         : (rawUser as JwtPayload & { _id: string })._id;
+
+    console.log("fundAccountId => ", fundAccountId);
+    console.log("earningId => ", earningId);
 
     if (!userId) {
       return res
@@ -725,7 +974,9 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       travelId: earning.travelId ? String(earning.travelId) : "",
     };
 
-    logger.info("Creating Razorpay payout with notes:" + notes);
+    logger.info(
+      "Creating Razorpay payout with notes: " + JSON.stringify(notes)
+    );
 
     // 5. Call Razorpay
     let razorpayResponse;
@@ -740,7 +991,10 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
         }
       );
     } catch (err: any) {
-      logger.error("Razorpay create payout failed:", err.message || err);
+      logger.error(
+        "Razorpay create payout failed:",
+        err.message || JSON.stringify(err)
+      );
 
       // Mark payout failed and revert earning
       await Payout.findByIdAndUpdate(localPayout._id, {
@@ -794,7 +1048,7 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       })
     );
   } catch (error) {
-    logger.error("Error withdrawing funds:" + error);
+    logger.error("Error withdrawing funds: " + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
@@ -816,7 +1070,7 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
 
     const earnings = await Earning.find({
       userId,
-      status: "completed",
+      status: "completed", // Only delivered consignments
       is_withdrawn: false,
     })
       .populate("consignmentId", "description fromAddress toAddress")

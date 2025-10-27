@@ -888,6 +888,14 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
     // Determine who is rejecting
     const isTravellerRejecting =
       carryRequest.travellerId.toString() === userId.toString();
+    const isSenderRejecting =
+      carryRequest.requestedBy.toString() === userId.toString();
+
+    if (!isTravellerRejecting && !isSenderRejecting) {
+      return res.status(403).json({
+        message: "You are not authorized to reject this request",
+      });
+    }
 
     carryRequest.status = "rejected";
     await carryRequest.save();
@@ -915,7 +923,7 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       requestedBy: carryRequest.requestedBy.toString(),
       travellerName,
       rejectedById: userId.toString(),
-      rejectedByName: isTravellerRejecting ? senderName : travellerName, // FIXED
+      rejectedByName: isTravellerRejecting ? travellerName : senderName, // FIXED
       status: "rejected" as const,
       senderPayAmount: carryRequest.senderPayAmount,
       travellerEarning: carryRequest.travellerEarning,
@@ -930,7 +938,7 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       userId: targetUserId,
       title: "Carry request update",
       message: `${
-        isTravellerRejecting ? senderName : travellerName
+        isTravellerRejecting ? travellerName : senderName
       } has rejected your carry request`,
       typeOfNotif: "consignment",
       relatedConsignmentId: carryRequest.consignmentId,

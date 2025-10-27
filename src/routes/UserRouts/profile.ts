@@ -1,12 +1,13 @@
 import { Router } from "express";
-import { addAddress } from "../../controllers/address.controller.js";
 import {
   addFundAccount,
   createRazorpayCustomerId,
   getProfile,
   getTravelAndConsignment,
+  getUserBankDetails,
   getUserEarnings,
   getUserFundAccounts,
+  saveUserBankDetails,
   withdrawFunds,
 } from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
@@ -24,6 +25,13 @@ profileRouter.patch(
   isAuthMiddleware,
   createRazorpayCustomerId
 );
+
+// Bank Details Routes
+profileRouter.get("/bankDetails", isAuthMiddleware, getUserBankDetails);
+profileRouter.post("/bankDetails", isAuthMiddleware, saveUserBankDetails);
+profileRouter.put("/bankDetails", isAuthMiddleware, saveUserBankDetails);
+
+// Fund Accounts & Withdrawals
 profileRouter.get("/fundAccounts", isAuthMiddleware, getUserFundAccounts);
 profileRouter.post("/addFundAccount", isAuthMiddleware, addFundAccount);
 profileRouter.put("/withdrawFunds", isAuthMiddleware, withdrawFunds);
