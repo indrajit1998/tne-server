@@ -10,6 +10,7 @@ interface FareConfig {
   weightRateFlight: number;
   distanceRateFlight: number;
   baseFareFlight: number;
+  gst:number;
 }
 
 const fareConfigSchema = new Schema<FareConfig>(
@@ -23,6 +24,7 @@ const fareConfigSchema = new Schema<FareConfig>(
     weightRateFlight: { type: Number, required: true },
     distanceRateFlight: { type: Number, required: true },
     baseFareFlight: { type: Number, required: true },
+    gst: { type: Number, required: true ,default: 0},
   },
   { timestamps: true }
 );
