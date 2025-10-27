@@ -37,18 +37,18 @@ interface Consignment {
     height: number;
     unit: "cm" | "m" | "inches";
   };
-  flightPrice:{
-    senderPay:number;
-    travelerEarn:number;
-  }
-  trainPrice:{
-    senderPay:number;
-    travelerEarn:number;
-  }
-  roadWaysPrice:{
-    senderPay:number;
-    travelerEarn:number;
-  }
+  flightPrice: {
+    senderPay: number;
+    travelerEarn: number;
+  };
+  trainPrice: {
+    senderPay: number;
+    travelerEarn: number;
+  };
+  roadWaysPrice: {
+    senderPay: number;
+    travelerEarn: number;
+  };
   sendingDate: Date;
   receiverName: string;
   receiverPhone: string;
@@ -60,10 +60,12 @@ interface Consignment {
   status:
     | "published"
     | "requested"
+    | "assigned"
+    |"to_handover"
     | "in-transit"
     | "delivered"
     | "cancelled"
-    | "assigned";
+    | "expired";
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -123,17 +125,17 @@ const consignmentSchema = new Schema<Consignment>(
       type: Number,
       required: true,
     },
-    flightPrice:{
-      senderPay:{type:Number,required:true},
-      travelerEarn:{type:Number,required:true}
+    flightPrice: {
+      senderPay: { type: Number, required: true },
+      travelerEarn: { type: Number, required: true },
     },
-    trainPrice:{
-      senderPay:{type:Number,required:true},
-      travelerEarn:{type:Number,required:true}
+    trainPrice: {
+      senderPay: { type: Number, required: true },
+      travelerEarn: { type: Number, required: true },
     },
-    roadWaysPrice:{
-      senderPay:{type:Number,required:true},
-      travelerEarn:{type:Number,required:true}
+    roadWaysPrice: {
+      senderPay: { type: Number, required: true },
+      travelerEarn: { type: Number, required: true },
     },
     weightUnit: {
       type: String,
@@ -190,9 +192,11 @@ const consignmentSchema = new Schema<Consignment>(
         "published",
         "requested",
         "in-transit",
+        "to_handover",
         "delivered",
         "cancelled",
         "assigned",
+        "expired",
       ],
       required: true,
     },
