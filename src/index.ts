@@ -13,6 +13,7 @@ import addressRouter from "./routes/address/address.router";
 import adminRouts from "./routes/admin/admin";
 import consignmentRoutes from "./routes/Consignment/consignment";
 import feedbackOrContactRoute from "./routes/feedbackOrContact/feedbackOrContact.route";
+import kycRouter from "./routes/Kyc/kyc.router";
 import locationRouter from "./routes/location/location.router";
 import notificationRouter from "./routes/Notifications/notification.router";
 import paymentRouter from "./routes/Payment/payment.router";
@@ -34,7 +35,7 @@ const server = http.createServer(app);
 initSocket(server);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 app.use(requestLogger);
 app.use(express.urlencoded({ extended: true }));
@@ -44,6 +45,7 @@ app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", profileRoutes);
 app.use("/api/v1/rating", ratingRouter);
+app.use("/api/v1/kyc", kycRouter);
 
 // search location
 app.use("/api/v1/location", locationRouter);

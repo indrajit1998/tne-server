@@ -1,19 +1,35 @@
-import mongoose, { Schema } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
+
+export interface KYCSubDocument {
+  requestId?: string;
+  status: "pending" | "verified" | "failed" | "not_provided";
+}
+
+export interface KYC {
+  groupId?: string;
+  ind_pan: KYCSubDocument;
+  ind_aadhaar: KYCSubDocument;
+  ind_driving_license: KYCSubDocument;
+  face: KYCSubDocument;
+  overallStatus: "pending" | "verified" | "failed" | "not_started";
+  updatedAt?: Date;
+}
 
 export interface BankDetails {
   accountHolderName: string;
-  accountNumber: string; //masked
+  accountNumber: string; // masked version (e.g., ****1234)
+  accountNumberEncrypted?: string; // full encrypted number (not stored in schema)
   ifscCode: string;
   bankName: string;
   branch: string;
-  accountHash: string; // SHA-256 hash
-  razorpayFundAccountId?: string; //link to the fundAccount
+  accountHash: string; // SHA-256 hash for uniqueness
+  razorpayFundAccountId?: string;
   isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface User {
+export interface User extends Document {
   phoneNumber: string;
   firstName?: string;
   lastName?: string;
@@ -26,12 +42,18 @@ export interface User {
   razorpayCustomerId?: string;
   profilePictureUrl?: string;
   isAdmin: boolean;
-  rating?: number;
-  reviewCount?: number;
-  totalEarnings?: number;
-  completedTrips?: number;
 
+  // Traveller stats
+  rating: number;
+  reviewCount: number;
+  totalEarnings: number;
+  completedTrips: number;
+
+  // Bank details (embedded subdocument)
   bankDetails?: BankDetails;
+
+  // KYC info
+  kyc: KYC;
 }
 
 const BankDetailsSchema = new Schema<BankDetails>(
@@ -69,6 +91,51 @@ const UserSchema = new Schema<User>(
 
     // Bank Details
     bankDetails: { type: BankDetailsSchema },
+
+    kyc: {
+      type: {
+        groupId: { type: String },
+        ind_pan: {
+          requestId: { type: String },
+          status: {
+            type: String,
+            enum: ["pending", "verified", "failed", "not_provided"],
+            default: "not_provided",
+          },
+        },
+        ind_aadhaar: {
+          requestId: { type: String },
+          status: {
+            type: String,
+            enum: ["pending", "verified", "failed", "not_provided"],
+            default: "not_provided",
+          },
+        },
+        ind_driving_license: {
+          requestId: { type: String },
+          status: {
+            type: String,
+            enum: ["pending", "verified", "failed", "not_provided"],
+            default: "not_provided",
+          },
+        },
+        face: {
+          requestId: { type: String },
+          status: {
+            type: String,
+            enum: ["pending", "verified", "failed", "not_provided"],
+            default: "not_provided",
+          },
+        },
+        overallStatus: {
+          type: String,
+          enum: ["pending", "verified", "failed", "not_started"],
+          default: "not_started",
+        },
+        updatedAt: { type: Date },
+      },
+      default: {},
+    },
   },
   { timestamps: true }
 );
