@@ -4,6 +4,7 @@ interface Payment {
   userId: Types.ObjectId;
   consignmentId: Types.ObjectId;
   travelId: Types.ObjectId;
+  // carryRequestId: Types.ObjectId;
   type: "sender_pay" | "traveller_earning" | "platform_commission";
   amount: number;
   status:
@@ -28,6 +29,11 @@ const paymentSchema = new Schema<Payment>(
       required: true,
     },
     travelId: { type: Schema.Types.ObjectId, ref: "Travel", required: true },
+    // carryRequestId: {
+    //   type: Schema.Types.ObjectId,
+    //   ref: "CarryRequest",
+    //   required: true,
+    // },
     type: {
       type: String,
       enum: ["sender_pay", "traveller_earning", "platform_commission"],
@@ -57,6 +63,9 @@ const paymentSchema = new Schema<Payment>(
   },
   { timestamps: true }
 );
+
+// Add index for efficient queries
+paymentSchema.index({ carryRequestId: 1, status: 1 });
 
 const Payment = mongoose.model<Payment>("Payments", paymentSchema);
 
