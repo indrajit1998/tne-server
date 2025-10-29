@@ -842,7 +842,7 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
     }
     console.log(notificationData);
 
-    await emitPaymentRequest(sender._id.toString(), {
+    await emitPaymentRequest((sender._id as Types.ObjectId).toString(), {
       consignmentId: consignment._id.toString(),
       carryRequestId: carryRequest._id.toString(),
       amount: carryRequest.senderPayAmount,

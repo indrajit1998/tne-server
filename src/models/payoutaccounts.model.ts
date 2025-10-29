@@ -10,7 +10,8 @@ interface PayoutAccounts {
   accountType?: "bank_account" | "vpa";
   bankName?: string;
   branch?: string;
-  accountNumber?: string; // masked for frontend
+  accountNumber?: string; // masked
+  accountNumberEncrypted?: string; // encrypted full
   vpa?: string; // masked for frontend
   accountHash?: string; // SHA-256 hash for duplicate check
 }
@@ -27,11 +28,14 @@ const payoutAccountsSchema = new Schema<PayoutAccounts>(
     bankName: { type: String }, // optional for VPA
     branch: { type: String }, // optional for VPA
     accountNumber: { type: String }, // masked for frontend
-    accountHash: { type: String, required: true, unique: true }, // hash for uniqueness
+    accountHash: { type: String, required: true }, // hash
     vpa: { type: String }, // masked for frontend
   },
   { timestamps: true }
 );
+
+// Compound unique index
+payoutAccountsSchema.index({ userId: 1, accountHash: 1 }, { unique: true });
 
 const PayoutAccountsModel = mongoose.model<PayoutAccounts>(
   "PayoutAccounts",

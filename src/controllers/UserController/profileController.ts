@@ -22,6 +22,7 @@ import {
   createVpaFundAccount,
   validateVpa,
 } from "../../services/razorpay.service.js";
+import { encrypt, maskAccountNumber } from "../../lib/encryption.js";
 
 interface TravelConsignmentsPopulated
   extends Omit<TravelConsignments, "travelId"> {
@@ -492,17 +493,13 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
         .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
     }
 
-    // Hash the account number for uniqueness check
+    // Encrypt and mask the account number
+    const encryptedAccountNumber = encrypt(accountNumber);
+    const maskedAccountNumber = maskAccountNumber(accountNumber);
     const accountHash = crypto
       .createHash("sha256")
       .update(accountNumber)
       .digest("hex");
-
-    // Mask account number
-    const maskedAccountNumber =
-      accountNumber.length > 4
-        ? "****" + accountNumber.slice(-4)
-        : accountNumber;
 
     session.startTransaction();
 
@@ -548,6 +545,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
             displayName: `${user.firstName} ${user.lastName}`,
             accountType: "bank_account",
             accountNumber: maskedAccountNumber,
+            accountNumberEncrypted: encryptedAccountNumber,
             bankName,
             branch,
             accountHash,
@@ -560,7 +558,8 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     // Update user's bank details
     user.bankDetails = {
       accountHolderName,
-      accountNumber: maskedAccountNumber,
+      accountNumber: maskedAccountNumber, // for frontend
+      accountNumberEncrypted: encryptedAccountNumber, // for admin access
       ifscCode: ifscCode.toUpperCase(),
       bankName,
       branch,
@@ -1072,6 +1071,7 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
       userId,
       status: "completed", // Only delivered consignments
       is_withdrawn: false,
+      payoutId: { $exists: false }, //Exclude processing payouts
     })
       .populate("consignmentId", "description fromAddress toAddress")
       .populate("travelId", "fromAddress toAddress modeOfTravel")

@@ -17,6 +17,125 @@ import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
 import { emitPaymentFailed, emitPaymentSuccess } from "../../socket/events";
 
+// export const initiatePayment = async (req: AuthRequest, res: Response) => {
+//   const session = await mongoose.startSession();
+
+//   try {
+//     const { carryRequestId } = req.body;
+//     if (!carryRequestId) throw new Error("carryRequestId is required");
+
+//     const carryRequest = await CarryRequest.findById(carryRequestId);
+//     if (!carryRequest)
+//       return res.status(404).json({ message: "Carry request not found" });
+
+//     if (carryRequest.status !== "accepted_pending_payment") {
+//       return res.status(400).json({
+//         message:
+//           "Carry request must be accepted before payment can be initiated",
+//       });
+//     }
+
+//     const existingPayment = await Payment.findOne({
+//       consignmentId: carryRequest.consignmentId,
+//       status: "pending",
+//     });
+
+//     const now = new Date();
+
+//     // If pending payment exists
+//     if (existingPayment) {
+//       // Check if the payment order has expired (15 minutes validity)
+//       if (existingPayment.expiresAt > now) {
+//         // Order is still valid - return the existing order for retry
+//         logger.info("Reusing existing valid payment order");
+//         return res.status(200).json({
+//           message: "Payment order already exists and is valid",
+//           order: {
+//             id: existingPayment.razorpayOrderId,
+//             amount: existingPayment.amount * 100,
+//             currency: "INR",
+//           },
+//           paymentId: existingPayment._id,
+//           isRetry: true, // Flag to indicate this is a retry
+//         });
+//       } else {
+//         // Order has expired - mark as cancelled and create new one
+//         logger.info("Existing payment order expired, creating new one");
+//         session.startTransaction();
+
+//         existingPayment.status = "cancelled";
+//         await existingPayment.save({ session });
+
+//         await session.commitTransaction();
+//         // Continue to create new payment below
+//       }
+//     }
+
+//     // Create Razorpay order FIRST (before transaction)
+//     const orderResponse = await axios.post(
+//       "https://api.razorpay.com/v1/orders",
+//       {
+//         amount: carryRequest.senderPayAmount * 100,
+//         currency: "INR",
+//         receipt: carryRequest._id.toString(),
+//         payment_capture: 1,
+//       },
+//       {
+//         auth: {
+//           username: env.RAZORPAY_KEY_ID,
+//           password: env.RAZORPAY_KEY_SECRET,
+//         },
+//       }
+//     );
+
+//     session.startTransaction();
+
+//     // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
+
+//     // Calculate expiry time (15 minutes from now)
+//     const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
+
+//     //  Handle the array destructuring properly
+//     const createdPayments = await Payment.create(
+//       [
+//         {
+//           consignmentId: carryRequest.consignmentId,
+//           travelId: carryRequest.travelId,
+//           userId: carryRequest.requestedBy,
+//           type: "sender_pay",
+//           amount: carryRequest.senderPayAmount,
+//           status: "pending",
+//           razorpayOrderId: orderResponse.data.id,
+//           expiresAt,
+//         },
+//       ],
+//       { session }
+//     );
+
+//     const paymentDoc = createdPayments[0];
+//     if (!paymentDoc) {
+//       throw new Error("Failed to create payment record");
+//     }
+
+//     await session.commitTransaction();
+
+//     return res.status(200).json({
+//       message: "Payment initiated",
+//       order: orderResponse.data,
+//       paymentId: paymentDoc._id,
+//       isRetry: false,
+//     });
+//   } catch (error: any) {
+//     await session.abortTransaction();
+//     logger.error("Initiate payment error:", error);
+//     return res
+//       .status(500)
+//       .json({ message: error.message || "Failed to initiate payment" });
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
 export const initiatePayment = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
 
@@ -39,36 +158,8 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       consignmentId: carryRequest.consignmentId,
       status: "pending",
     });
-
-    const now = new Date();
-
-    // If pending payment exists
     if (existingPayment) {
-      // Check if the payment order has expired (15 minutes validity)
-      if (existingPayment.expiresAt > now) {
-        // Order is still valid - return the existing order for retry
-        logger.info("Reusing existing valid payment order");
-        return res.status(200).json({
-          message: "Payment order already exists and is valid",
-          order: {
-            id: existingPayment.razorpayOrderId,
-            amount: existingPayment.amount * 100,
-            currency: "INR",
-          },
-          paymentId: existingPayment._id,
-          isRetry: true, // Flag to indicate this is a retry
-        });
-      } else {
-        // Order has expired - mark as cancelled and create new one
-        logger.info("Existing payment order expired, creating new one");
-        session.startTransaction();
-
-        existingPayment.status = "cancelled";
-        await existingPayment.save({ session });
-
-        await session.commitTransaction();
-        // Continue to create new payment below
-      }
+      return res.status(400).json({ message: "Payment already initiated" });
     }
 
     // Create Razorpay order FIRST (before transaction)
@@ -92,9 +183,6 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
 
     // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
 
-    // Calculate expiry time (15 minutes from now)
-    const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
-
     //  Handle the array destructuring properly
     const createdPayments = await Payment.create(
       [
@@ -106,7 +194,6 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
           amount: carryRequest.senderPayAmount,
           status: "pending",
           razorpayOrderId: orderResponse.data.id,
-          expiresAt,
         },
       ],
       { session }
@@ -123,7 +210,6 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       message: "Payment initiated",
       order: orderResponse.data,
       paymentId: paymentDoc._id,
-      isRetry: false,
     });
   } catch (error: any) {
     await session.abortTransaction();
