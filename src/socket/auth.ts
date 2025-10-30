@@ -26,13 +26,16 @@ export const socketAuthMiddleware = async (
 
     const decoded = jwt.verify(token, env.JWT_SECRET!) as DecodedToken;
 
+    // console.log("decoded => ", decoded);
+
     if (!decoded?._id) {
       return next(new Error("Invalid or missing user ID in token"));
     }
 
     socket.data.userId = decoded._id;
     next();
-  } catch (error) {
+  } catch (error: any) {
+    console.error("JWT verification failed:", error.message);
     next(new Error("Socket authentication failed"));
   }
 };

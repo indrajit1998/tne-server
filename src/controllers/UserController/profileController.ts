@@ -5,6 +5,7 @@ import mongoose, { Types } from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
+import { encrypt, maskAccountNumber } from "../../lib/encryption.js";
 import logger from "../../lib/logger.js";
 import type { AuthRequest } from "../../middlewares/authMiddleware.js";
 import ConsignmentModel from "../../models/consignment.model.js";
@@ -22,6 +23,7 @@ import {
   createVpaFundAccount,
   validateVpa,
 } from "../../services/razorpay.service.js";
+import { updateUserProfileSchema } from "../../validations/userProfile.validator.js";
 
 interface TravelConsignmentsPopulated
   extends Omit<TravelConsignments, "travelId"> {
@@ -132,6 +134,60 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
       .json(
         sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
       );
+  }
+};
+
+export const updateUserProfile = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = typeof req.user === "string" ? req.user : req.user?._id;
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+    }
+
+    // Validate input with Zod
+    const parseResult = updateUserProfileSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errors = parseResult.error.issues.map((e) => e.message);
+      return res.status(400).json(sendResponse(400, null, errors.join(", ")));
+    }
+
+    const { firstName, lastName, email } = parseResult.data;
+
+    const user = await User.findById(userId).select("-bankDetails -kyc -__v");
+
+    if (!user) {
+      return res.status(404).json(sendResponse(404, null, "User not found"));
+    }
+
+    // Restrict name updates if KYC verified
+    if (user.isKYCVerified && (firstName || lastName)) {
+      return res
+        .status(400)
+        .json(
+          sendResponse(400, null, "Cannot update name after KYC verification")
+        );
+    }
+
+    //  Apply allowed updates
+    if (!user.isKYCVerified) {
+      if (firstName) user.firstName = firstName.trim();
+      if (lastName) user.lastName = lastName.trim();
+    }
+    if (email) user.email = email.trim();
+
+    await user.save();
+
+    return res
+      .status(200)
+      .json(sendResponse(200, user, "Profile updated successfully"));
+  } catch (err) {
+    console.error("Error updating user profile:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating profile",
+    });
   }
 };
 
@@ -492,17 +548,13 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
         .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
     }
 
-    // Hash the account number for uniqueness check
+    // Encrypt and mask the account number
+    const encryptedAccountNumber = encrypt(accountNumber);
+    const maskedAccountNumber = maskAccountNumber(accountNumber);
     const accountHash = crypto
       .createHash("sha256")
       .update(accountNumber)
       .digest("hex");
-
-    // Mask account number
-    const maskedAccountNumber =
-      accountNumber.length > 4
-        ? "****" + accountNumber.slice(-4)
-        : accountNumber;
 
     session.startTransaction();
 
@@ -548,6 +600,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
             displayName: `${user.firstName} ${user.lastName}`,
             accountType: "bank_account",
             accountNumber: maskedAccountNumber,
+            accountNumberEncrypted: encryptedAccountNumber,
             bankName,
             branch,
             accountHash,
@@ -560,7 +613,8 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     // Update user's bank details
     user.bankDetails = {
       accountHolderName,
-      accountNumber: maskedAccountNumber,
+      accountNumber: maskedAccountNumber, // for frontend
+      accountNumberEncrypted: encryptedAccountNumber, // for admin access
       ifscCode: ifscCode.toUpperCase(),
       bankName,
       branch,
@@ -1072,6 +1126,7 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
       userId,
       status: "completed", // Only delivered consignments
       is_withdrawn: false,
+      payoutId: { $exists: false }, //Exclude processing payouts
     })
       .populate("consignmentId", "description fromAddress toAddress")
       .populate("travelId", "fromAddress toAddress modeOfTravel")

@@ -8,6 +8,7 @@ import {
   getUserEarnings,
   getUserFundAccounts,
   saveUserBankDetails,
+  updateUserProfile,
   withdrawFunds,
 } from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
@@ -25,6 +26,8 @@ profileRouter.patch(
   isAuthMiddleware,
   createRazorpayCustomerId
 );
+
+profileRouter.patch("/update", isAuthMiddleware, updateUserProfile);
 
 // Bank Details Routes
 profileRouter.get("/bankDetails", isAuthMiddleware, getUserBankDetails);

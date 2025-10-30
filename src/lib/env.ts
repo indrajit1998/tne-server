@@ -20,6 +20,11 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string(),
   RAZORPAY_ACCOUNT_NUMBER: z.string(),
   RAZORPAY_WEBHOOK_SECRET: z.string(),
+  BANK_ENCRYPTION_KEY: z.string(),
+  IDFY_BASE_URL: z.string(),
+  IDFY_ACCOUNT_ID: z.string(),
+  IDFY_API_KEY: z.string(),
+  IDFY_WEBHOOK_SECRET: z.string(),
 });
 
 const parsed = envSchema.safeParse(process.env);
