@@ -13,6 +13,11 @@ export const getDashboardStats = async (req: AdminAuthRequest, res: Response) =>
         const today = new Date();
         const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        CarryRequest.deleteMany({ status:"expired", createdAt: { $lt: new Date(Date.now() - 24*60*60*1000) } });
+        const totalRefundsAmount = await Payment.aggregate<{ _id: null; total: number }>([
+        { $match: { "refundDetails.status": "processed" } },
+        { $group: { _id: null, total: { $sum: "$refundDetails.amount" } } }
+        ]);
 
         const [
             // Main Counters
@@ -43,7 +48,8 @@ export const getDashboardStats = async (req: AdminAuthRequest, res: Response) =>
             monthlyAccepted,
             monthlyCancelled,
             monthlyDelivered,
-
+            noOfRefunds,
+            
         ] = await Promise.all([
             // Main Counters
             User.countDocuments(),
@@ -74,10 +80,12 @@ export const getDashboardStats = async (req: AdminAuthRequest, res: Response) =>
             CarryRequest.countDocuments({ status: "accepted", createdAt: { $gte: startOfLastMonth } }),
             CarryRequest.countDocuments({ status: "rejected", createdAt: { $gte: startOfLastMonth } }),
             ConsignmentModel.countDocuments({ status: "delivered", createdAt: { $gte: startOfLastMonth } }),
+            Payment.countDocuments({  "refundDetails.status": "processed" }),,
+           
         ]);
 
         const totalEarnings = totalEarningsResult[0]?.total || 0;
-
+        const totalRefundedAmount = totalRefundsAmount[0]?.total || 0;
         const stats = {
             totalUsers,
             totalEarnings,
@@ -106,6 +114,10 @@ export const getDashboardStats = async (req: AdminAuthRequest, res: Response) =>
                 cancelled: monthlyCancelled,
                 delivered: monthlyDelivered,
             },
+            refunds: {
+                noOfRefunds,
+                totalRefundedAmount: totalRefundedAmount || 0,
+            }
         };
         
         return res.status(200).json({ data: stats, message: "Dashboard stats fetched successfully" });
@@ -281,30 +293,88 @@ export const getFeedbackOrContact = async (req: AdminAuthRequest, res: Response)
     }
 }
 
+
 export const getTransactionHistory = async (req: AdminAuthRequest, res: Response) => {
-    try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 20;
-        const skip = (page - 1) * limit;
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const skip = (page - 1) * limit;
 
-        const [transactions, totalTransactions] = await Promise.all([
-            Payment.find({})
-                .populate("userId" , "firstName lastName email phoneNumber") // Populate with more user details
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit)
-                .lean(),
-            Payment.countDocuments({})
-        ]);
+    const [transactions, totalTransactions] = await Promise.all([
+      Payment.find({})
+        .populate("userId", "firstName lastName email phoneNumber")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Payment.countDocuments({}),
+    ]);
 
-        return res.status(200).json({
-            total: totalTransactions,
-            currentPage: page,
-            totalPages: Math.ceil(totalTransactions / limit),
-            data: transactions,
-        });
-    } catch (error) {
-        console.error("Error fetching transaction history:", error);
-        return res.status(500).json({ message: "Internal server error" });
-    }
+    // Replace amount with refund amount if refunded
+    const updatedTransactions = transactions.map((txn) => {
+      const paymentStatus = txn.status;
+      const refundStatus = txn.refundDetails?.status;
+
+      const isRefunded =
+        paymentStatus === "refunded" ||
+        refundStatus === "PROCESSED" ;
+
+      // Replace txn.amount if refunded
+      if (isRefunded) {
+        txn.amount = txn.refundDetails?.amount || txn.amount;
+      }
+
+      return txn;
+    });
+
+    return res.status(200).json({
+      total: totalTransactions,
+      currentPage: page,
+      totalPages: Math.ceil(totalTransactions / limit),
+      data: updatedTransactions,
+    });
+  } catch (error) {
+    console.error("Error fetching transaction history:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+// export const getTransactionHistory = async (req: AdminAuthRequest, res: Response) => {
+//     try {
+//         const page = parseInt(req.query.page as string) || 1;
+//         const limit = parseInt(req.query.limit as string) || 20;
+//         const skip = (page - 1) * limit;
+
+//         const [transactions, totalTransactions] = await Promise.all([
+//             Payment.find({})
+//                 .populate("userId" , "firstName lastName email phoneNumber") // Populate with more user details
+//                 .sort({ createdAt: -1 })
+//                 .skip(skip)
+//                 .limit(limit)
+//                 .lean(),
+//             Payment.countDocuments({})
+//         ]);
+
+//         return res.status(200).json({
+//             total: totalTransactions,
+//             currentPage: page,
+//             totalPages: Math.ceil(totalTransactions / limit),
+//             data: transactions,
+//         });
+//     } catch (error) {
+//         console.error("Error fetching transaction history:", error);
+//         return res.status(500).json({ message: "Internal server error" });
+//     }
+// };

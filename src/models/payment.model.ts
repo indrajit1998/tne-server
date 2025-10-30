@@ -1,6 +1,11 @@
-import mongoose, { Schema, type Types } from "mongoose";
-
-interface Payment {
+import mongoose, { Schema, type Types} from "mongoose";
+interface RefundDetails {
+  refundId?: string | null;
+  amount?: number | null;
+  speed?: string | null;
+  status?: string | null;
+}
+interface Payment  {
   userId: Types.ObjectId;
   consignmentId: Types.ObjectId;
   travelId: Types.ObjectId;
@@ -12,12 +17,14 @@ interface Payment {
     | "completed_pending_webhook"
     | "completed"
     | "failed"
+    | "refunded"
     | "cancelled";
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date;
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
+  refundDetails: RefundDetails;
 }
 
 const paymentSchema = new Schema<Payment>(
@@ -47,6 +54,7 @@ const paymentSchema = new Schema<Payment>(
         "completed_pending_webhook",
         "completed",
         "failed",
+        "refunded",
         "cancelled",
       ],
       default: "pending",
@@ -60,6 +68,13 @@ const paymentSchema = new Schema<Payment>(
     },
     razorpayPaymentId: { type: String },
     razorpayOrderId: { type: String },
+    refundDetails: {
+      refundId: { type: String, default: null },
+      amount: { type: Number, default: null },
+      speed: { type: String, default: null },
+      status: { type: String, default: null },
+    },
+
   },
   { timestamps: true }
 );

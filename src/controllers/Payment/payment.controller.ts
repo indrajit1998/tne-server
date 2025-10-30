@@ -12,10 +12,13 @@ import Earning from "../../models/earning.model";
 import FareConfigModel from "../../models/fareconfig.model";
 import Payment from "../../models/payment.model";
 import { Payout, type PayoutDoc } from "../../models/payout.model";
+import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import PayoutAccountsModel from "../../models/payoutaccounts.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
 import { emitPaymentFailed, emitPaymentSuccess } from "../../socket/events";
+import { razorpayRefundWebhook } from "./refund.payments";
+import { request } from "http";
 
 // export const initiatePayment = async (req: AuthRequest, res: Response) => {
 //   const session = await mongoose.startSession();
@@ -735,7 +738,11 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           // Other payout events can be logged and ignored, e.g., payout.created, payout.processed etc.
           logger.info(`Unhandled payout event: ${event}`);
         }
-      } // end payout branch
+      }
+      // ---------------REFUND EVENTS--------------
+      else if (event.startsWith("refund.")) {
+         return await razorpayRefundWebhook(request as unknown as AdminAuthRequest, res);
+      }
 
       await session.commitTransaction();
       return res.status(200).send("Webhook processed successfully");
@@ -751,3 +758,5 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
     res.status(500).send("Internal server error");
   }
 };
+
+

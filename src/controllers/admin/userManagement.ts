@@ -4,6 +4,15 @@ import ConsignmentModel from "../../models/consignment.model";
 import { TravelModel } from "../../models/travel.model";
 import TravelConsignments from "../../models/travelconsignments.model"; 
 import { User } from "../../models/user.model";
+import { Address } from "../../models/address.model";
+import { CarryRequest } from "../../models/carryRequest.model";
+import  Payment  from "../../models/payment.model";
+import { RatingModel } from "../../models/rating.model";
+import { Payout } from "../../models/payout.model";
+import Notification from "../../models/notification.model";
+import { FeedbackOrContactModel } from "../../models/feedbackOrContact";
+import Earning from "../../models/earning.model";
+import PayoutAccountsModel from "../../models/payoutaccounts.model";
 
 export const getUsersList = async (req: AdminAuthRequest, res: Response) => {
     try {
@@ -115,7 +124,21 @@ export const deleteUser = async (req: AdminAuthRequest, res: Response) => {
         await Promise.all([
             TravelModel.deleteMany({ travelerId: userId }),
             ConsignmentModel.deleteMany({ senderId: userId }),
-            TravelConsignments.deleteMany({ travelId: { $in: travelIds }}) 
+            TravelConsignments.deleteMany({ travelId: { $in: travelIds }}),
+            CarryRequest.deleteMany({ travellerId: userId }),
+            CarryRequest.deleteMany({ requestedBy: userId }),
+            Address.deleteMany({ userId: userId }),
+            Payment.deleteMany({ userId: userId }),
+            RatingModel.deleteMany({ travellerId: userId }),
+            RatingModel.deleteMany({ senderId: userId }),
+            Payout.deleteMany({ userId: userId }),
+            PayoutAccountsModel.deleteMany({ userId: userId }),
+            Notification.deleteMany({ userId: userId }),
+           // Notification.deleteMany({ relatedTra userId })
+           FeedbackOrContactModel.deleteMany({ userId: userId }),
+           Earning.deleteMany({ userId: userId }),
+            
+
         ]);
 
 
