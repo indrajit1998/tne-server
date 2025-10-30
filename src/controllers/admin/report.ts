@@ -11,389 +11,13 @@ import FareConfigModel from "../../models/fareconfig.model";
 import mongoose, { type PipelineStage } from "mongoose";
 
 
-
-// export const getConsolidateConsignment = async (req: AdminAuthRequest, res: Response) => {
-//  try {
-//    const page = parseInt(req.query.page as string) || 1;
-//    const limit = parseInt(req.query.limit as string) || 30;
-//    const skip = (page - 1) * limit;
-//    const search = (req.query.search as string) || "";
-
-//    const config = await FareConfigModel.findOne().lean();
-//    const gstRate = config?.gst || 0;
-//    const marginRate = config?.margin || 0;
-//    const teFee = config?.TE || 0;
-//    console.log("GST Rate:", gstRate, "Margin Rate:", marginRate, "TE Fee:", teFee);
-//    const searchQuery = search ? {
-//      $or: [
-//        { 'senderInfo.firstName': { $regex: search, $options: 'i' } },
-//        { 'senderInfo.lastName': { $regex: search, $options: 'i' } },
-//        { 'senderInfo.email': { $regex: search, $options: 'i' } },
-//        { 'senderInfo.phoneNumber': { $regex: search, $options: 'i' } },
-//        { 'travellerInfo.firstName': { $regex: search, $options: 'i' } },
-//        { 'travellerInfo.lastName': { $regex: search, $options: 'i' } },
-//        { 'travellerInfo.email': { $regex: search, $options: 'i' } },
-//        { 'travellerInfo.phoneNumber': { $regex: search, $options: 'i' } },
-//        { 'consignmentInfo.description': { $regex: search, $options: 'i' } },
-//        { 'consignmentInfo.status': { $regex: search, $options: 'i' } },
-//        { 'status': { $regex: search, $options: 'i' } }, 
-//        { 'consignmentInfo.fromAddress.city': { $regex: search, $options: 'i' } },
-//        { 'consignmentInfo.toAddress.city': { $regex: search, $options: 'i' } },
-//      ]
-//    } : {};
-
-//    const basePipeline: PipelineStage[] = [
-//      // ... (Your $lookup and $unwind stages remain the same)
-//      { $lookup: { from: "consignments", localField: "consignmentId", foreignField: "_id", as: "consignmentInfo" } },
-//      { $unwind: "$consignmentInfo" },
-//      { $lookup: { from: "users", localField: "consignmentInfo.senderId", foreignField: "_id", as: "senderInfo" } },
-//      { $unwind: "$senderInfo" },
-//      { $lookup: { from: "travels", localField: "travelId", foreignField: "_id", as: "travelInfo" } },
-//      { $unwind: "$travelInfo" },
-//      { $lookup: { from: "users", localField: "travelInfo.travelerId", foreignField: "_id", as: "travellerInfo" } },
-//      { $unwind: "$travellerInfo" },
-//      { $match: searchQuery },
-     
-//      // --- *** UPDATED $project STAGE *** ---
-//      {
-//        $project: {
-//          _id: 0,
-//          consignmentId: { $toString: "$consignmentInfo._id" }, 
-//          senderName: { $concat: ["$senderInfo.firstName", " ", "$senderInfo.lastName"] },
-//          senderPhone: "$senderInfo.phoneNumber",
-//          senderEmail: "$senderInfo.email",
-//          travellerName: { $concat: ["$travellerInfo.firstName", " ", "$travellerInfo.lastName"] },
-//          travellerPhone: "$travellerInfo.phoneNumber",
-//          travellerEmail: "$travellerInfo.email",
-//          fromCity: "$consignmentInfo.fromAddress.city",
-//          toCity: "$consignmentInfo.toAddress.city",
-//          sendingDate: "$consignmentInfo.sendingDate",
-//          consignmentStatus: "$consignmentInfo.status",
-//          travelConsignmentStatus: "$status", 
-//          senderPaid: "$senderToPay",
-//          travellerEarned: "$travellerEarning",
-//          pickupTime: "$pickupTime",
-//          deliveryTime: "$deliveryTime",
-//          createdAt: "$createdAt",
-//          modeOfTravel: "$travelInfo.modeOfTravel",
-//         travelAndEarnFee: { $literal: teFee },
-//     gstAmount: { $multiply: ["$senderToPay", { $divide: [gstRate, 100] }] },
-//     baseForMargin: {
-//       $subtract: [
-//         "$senderToPay",
-//         { $multiply: ["$senderToPay", { $divide: [gstRate, 100] }] }
-//       ]
-//     },
-
-//     marginAmount: {
-//       $multiply: [
-//         {
-//           $subtract: [
-//             "$senderToPay",
-//             { $multiply: ["$senderToPay", { $divide: [gstRate, 100] }] }
-//           ]
-//         },
-//         { $divide: [marginRate, 100] }
-//       ]
-//     },
-
-//     remainingAmount: {
-//       $subtract: [
-//         {
-//           $subtract: [
-//             {
-//               $subtract: [
-//                 {
-//                   $subtract: [
-//                     "$senderToPay",
-//                     { $multiply: ["$senderToPay", { $divide: [gstRate, 100] }] }
-//                   ]
-//                 },
-//                 { $multiply: [
-//                     {
-//                       $subtract: [
-//                         "$senderToPay",
-//                         { $multiply: ["$senderToPay", { $divide: [gstRate, 100] }] }
-//                       ]
-//                     },
-//                     { $divide: [marginRate, 100] }
-//                   ] }
-//               ]
-//             },
-//             { $literal: teFee } 
-//           ]
-//         },
-//         "$travellerEarning"
-//       ]
-//     }
-//        },
-//      },
-//      // --- *** END OF UPDATED $project STAGE *** ---
-
-//      { $sort: { createdAt: -1 } }, // Sort by creation date of the link
-//    ];
-
-//    // Pipeline to get total count matching search
-//    const countPipeline: PipelineStage[] = [...basePipeline, { $count: "total" }];
-
-//    // Pipeline to get paginated results
-//    const dataPipeline: PipelineStage[] = [...basePipeline, { $skip: skip }, { $limit: limit }];
-
-//    // Execute count and data pipelines
-//    const [totalResult, stats] = await Promise.all([
-//       TravelConsignments.aggregate(countPipeline),
-//       TravelConsignments.aggregate(dataPipeline)
-//    ]);
-
-//    const totalConsignments = totalResult[0]?.total || 0;
-//    const totalPages = Math.ceil(totalConsignments / limit);
-//    console.log("Total Consignments:", totalConsignments);
-//    return res.status(200).json({
-//      success: true,
-//      total: totalConsignments,
-//      currentPage: page,
-//      totalPages: totalPages,
-//      data: stats,
-//    });
-//  } catch (error) {
-//    console.error("Error fetching consolidated consignment:", error);
-//    return res.status(500).json({
-//      success: false,
-//      message: "Internal Server Error while fetching consolidated consignment",
-//    });
-//  }
-// };
-
-
-
-
-
-
-// export const getConsolidateConsignment = async (req: AdminAuthRequest, res: Response) => {
-//   try {
-//     const stats = await CarryRequest.find({})
-//       .populate({
-//         path: "consignmentId",
-//         select: "senderId status createdAt",
-//         populate: {
-//           path: "senderId",
-//           select: "firstName lastName phoneNumber email",
-//         },
-//       })
-//       .populate({
-//         path: "travellerId",
-//         select: "firstName lastName email phoneNumber",
-//       })
-//       .sort({ createdAt: -1 })
-//       .lean();
-
-//     return res.status(200).json({
-//       success: true,
-//       total: stats.length,
-//       data: stats,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching consolidated consignment:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Internal Server Error while fetching consolidated consignment",
-//     });
-//   }
-// };
-
-
-
-
-
-
-// export const getTravellerReport = async (req: AdminAuthRequest, res: Response) => {
-//     try {
-//         const page = parseInt(req.query.page as string) || 1;
-//         const limit = parseInt(req.query.limit as string) || 10;
-//         const skip = (page - 1) * limit;
-//         const search = (req.query.search as string) || "";
-
-//         // Base pipeline starts from CarryRequest to accurately sum accepted earnings/counts
-//         const basePipeline = [
-//             // Stage 1: Filter for only accepted Carry Requests
-//             {
-//                 $match: { status: "accepted" }
-//             },
-//             // Stage 2: Group by travellerId to calculate totals per traveler
-//             {
-//                 $group: {
-//                     _id: "$travellerId", // Group by the traveler who accepted the request
-//                     totalEarnings: { $sum: "$travellerEarning" }, // Sum earnings from accepted requests
-//                     consignmentCount: { $sum: 1 }, // Count the number of accepted requests
-//                 },
-//             },
-//             // Stage 3: Lookup user details for the traveler
-//             {
-//                 $lookup: {
-//                     from: "users",
-//                     localField: "_id", // Link using the grouped travelerId (_id)
-//                     foreignField: "_id",
-//                     as: "travelerInfo",
-//                 },
-//             },
-//             // Stage 4: Unwind travelerInfo.
-//             // This stage now acts as an "inner join" and will DISCARD
-//             // any records where a user was not found (i.e., the orphan record).
-//             {
-//                  $unwind: "$travelerInfo"
-//             },
-//             // Stage 5: Apply search filter AFTER getting user info
-//             {
-//                  $match: search ? {
-//                     $or: [
-//                         // Search on the looked-up user fields or the calculated fields
-//                         { 'travelerInfo.firstName': { $regex: search, $options: 'i' } },
-//                         { 'travelerInfo.lastName': { $regex: search, $options: 'i' } },
-//                         { 'travelerInfo.email': { $regex: search, $options: 'i' } },
-//                         { 'travelerInfo.phoneNumber': { $regex: search, $options: 'i' } },
-//                     ]
-//                 } : {}
-//             },
-//              // Stage 6: Final Project for output structure
-//              {
-//                 $project: {
-//                     _id: 0,
-//                     travelerId: { $toString: "$_id" }, 
-                    
-//                     name: { $concat: ["$travelerInfo.firstName", " ", "$travelerInfo.lastName"] },
-//                     email: "$travelerInfo.email",
-//                     phone: "$travelerInfo.phoneNumber",
-//                     consignmentCount: 1, // Keep the calculated count
-//                     totalEarnings: 1 // Keep the calculated earnings
-//                 }
-//              },
-//              // Stage 7: Sort
-//              { $sort: { totalEarnings: -1, name: 1 } }, // Sort by earnings, then name
-//         ];
-
-//         // --- Execute Aggregations for Count and Data ---
-//          // Pipeline to get total count matching search (based on the grouped results)
-//         // THIS IS THE FIX: We use the same basePipeline to get the count
-//         const countPipeline = [...basePipeline, { $count: "total" }];
-
-//         // Pipeline to get paginated results
-//         const dataPipeline = [...basePipeline, { $skip: skip }, { $limit: limit }];
-
-//         // Execute both pipelines concurrently
-//         const [totalResult, stats] = await Promise.all([
-//              CarryRequest.aggregate(countPipeline), // Base collection is CarryRequest
-//              CarryRequest.aggregate(dataPipeline)   // Base collection is CarryRequest
-//         ]);
-
-//         // The total count is now taken from the result of the countPipeline
-//         const totalTravellers = totalResult[0]?.total || 0;
-//         const totalPages = Math.ceil(totalTravellers / limit);
-
-
-//         res.status(200).json({
-//             success: true,
-//             currentPage: page,
-//             totalPages,
-//             totalTravellers, // This count will now be 1 (or only show valid, found users)
-//             stats, // The paginated results
-//         });
-//     } catch (err) {
-//         console.error("Error fetching traveller stats:", err);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal Server Error while fetching traveller stats",
-//         });
-//     }
-// };
-
-
-// export const getSenderReport = async (req: AdminAuthRequest, res: Response) => {
-//   try {
-//     const page = parseInt(req.query.page as string) || 1;
-//     const limit = parseInt(req.query.limit as string) || 10;
-//     const skip = (page - 1) * limit;
-
-//     const stats = await ConsignmentModel.aggregate([
-      
-//       //{ $match: { status: "delivered" } },
-
-//       {
-//         $lookup: {
-//           from: "carryrequests",
-//           localField: "_id",
-//           foreignField: "consignmentId",
-//           as: "carryRequests",
-//         },
-//       },
-
-//       { $unwind: { path: "$carryRequests", preserveNullAndEmptyArrays: true } },
-//       {
-//         $group: {
-//           _id: "$senderId",
-//           consignmentCount: { $sum: 1 },
-//           totalPaid: { $sum: { $ifNull: ["$carryRequests.senderPayAmount", 0] } },
-//         },
-//       },
-
-//       {
-//         $lookup: {
-//           from: "users",
-//           localField: "_id",
-//           foreignField: "_id",
-//           as: "sender",
-//         },
-//       },
-
-//       { $unwind: "$sender" },
-
-//       {
-//         $project: {
-//           _id: 0,
-//           senderId: "$_id",
-//           name: "$sender.firstName",
-//           email: "$sender.email",
-//           phone: "$sender.phoneNumber",
-//           consignmentCount: 1,
-//           totalPaid: 1,
-//         },
-//       },
-
-//       { $sort: { totalPaid: -1 } },
-//       { $skip: skip },
-//       { $limit: limit },
-//     ]);
-
-//     const totalSenders = await ConsignmentModel.distinct("senderId");
-//     const totalPages = Math.ceil(totalSenders.length / limit);
-
-//     res.status(200).json({
-//       success: true,
-//       currentPage: page,
-//       totalPages,
-//       totalSenders: totalSenders.length,
-//       stats,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching sender report:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Internal Server Error while fetching sender report",
-//     });
-//   }
-// };
-
-// Add these imports at the top of your report.ts file; 
-
-
-
-
 export const getConsolidateConsignment = async (req: AdminAuthRequest, res: Response) => {
  try {
 
    // --- Fetch Fare Configuration First ---
    const config = await FareConfigModel.findOne().lean();
    const gstRate = config?.gst || 0;
-   const marginRate = config?.margin || 0;
+   const marginRate = (config?.margin || 0) * 100; // Convert to percentage
    const teFee = config?.TE || 0;
 
 
@@ -435,68 +59,81 @@ export const getConsolidateConsignment = async (req: AdminAuthRequest, res: Resp
      },
      { $unwind: "$travellerInfo" },
      {
-       $project: {
-         _id: 0,
-         consignmentId: { $toString: "$consignmentInfo._id" }, 
-         senderName: { $concat: ["$senderInfo.firstName", " ", "$senderInfo.lastName"] },
-         senderPhone: "$senderInfo.phoneNumber",
-         senderEmail: "$senderInfo.email",
-         travellerName: { $concat: ["$travellerInfo.firstName", " ", "$travellerInfo.lastName"] },
-         travellerPhone: "$travellerInfo.phoneNumber",
-         travellerEmail: "$travellerInfo.email",
-         fromCity: "$consignmentInfo.fromAddress.city",
-         toCity: "$consignmentInfo.toAddress.city",
-         sendingDate: "$consignmentInfo.sendingDate",
-         consignmentStatus: "$consignmentInfo.status",
-         travelConsignmentStatus: "$status", 
-         senderPaid: "$senderToPay",
-         travellerEarned: "$travellerEarning",
-         pickupTime: "$pickupTime",
-         deliveryTime: "$deliveryTime",
-         createdAt: "$createdAt",
-         modeOfTravel: "$travelInfo.modeOfTravel",
-         gstAmount: { 
-             $multiply: [ "$senderToPay", { $divide: [gstRate, 100] } ] 
-         },
-         
-         baseForMargin: {
-             $subtract: [ "$senderToPay", { $multiply: [ "$senderToPay", { $divide: [gstRate, 100] } ] } ]
-         },
+      $addFields: {
+        "originalBaseTotal": {
+          $divide: [
+            "$senderToPay", // This is the Final Total (e.g., 1120.56)
+            { 
+              $add: [
+                1, 
+                { $divide: [marginRate, 100] }, // ex: The 20%
+                { $divide: [gstRate, 100] }     // ex: The 18%
+              ] 
+            } // This results in ex: 1.38
+          ]
+        }
+      }
+    },
 
-         marginAmount: {
-             $multiply: [
-                 { $subtract: [ "$senderToPay", { $multiply: [ "$senderToPay", { $divide: [gstRate, 100] } ] } ] },
-                 { $divide: [marginRate, 100] }
-             ]
-         },
-         
-         travelAndEarnFee: { $literal: teFee },
-         
-         remainingAmount: {
-             $subtract: [
-                 { 
-                     $subtract: [
-                         { $subtract: [ 
-                             // baseForMargin
-                             { $subtract: [ "$senderToPay", { $multiply: [ "$senderToPay", { $divide: [gstRate, 100] } ] } ] },
-                             // marginAmount
-                             { $multiply: [
-                                 { $subtract: [ "$senderToPay", { $multiply: [ "$senderToPay", { $divide: [gstRate, 100] } ] } ] },
-                                 { $divide: [marginRate, 100] }
-                               ] 
-                             }
-                         ] },
-                         // - teFee
-                          { $literal: teFee}
-                     ]
-                 },
-                 // - travellerEarning
-                 "$travellerEarning"
-             ]
-         }
-       },
-     },
+    {
+      $project: {
+        _id: 0,
+        
+        // ... (All your other fields remain the same)
+        consignmentId: { $toString: "$consignmentInfo._id" }, 
+        senderName: { $concat: ["$senderInfo.firstName", " ", "$senderInfo.lastName"] },
+        senderPhone: "$senderInfo.phoneNumber",
+        senderEmail: "$senderInfo.email",
+        travellerName: { $concat: ["$travellerInfo.firstName", " ", "$travellerInfo.lastName"] },
+        travellerPhone: "$travellerInfo.phoneNumber",
+        travellerEmail: "$travellerInfo.email",
+        fromCity: "$consignmentInfo.fromAddress.city",
+        toCity: "$consignmentInfo.toAddress.city",
+        sendingDate: "$consignmentInfo.sendingDate",
+        consignmentStatus: "$consignmentInfo.status",
+        travelConsignmentStatus: "$status", 
+        senderPaid: "$senderToPay",
+        travellerEarned: "$travellerEarning",
+        pickupTime: "$pickupTime",
+        deliveryTime: "$deliveryTime",
+        createdAt: "$createdAt",
+        modeOfTravel: "$travelInfo.modeOfTravel",
+        
+        // --- CORRECTED CALCULATIONS ---
+        
+        // This is the true base amount (e.g., 812)
+        originalBaseTotal: "$originalBaseTotal",
 
+        // Correct GST: Base Total * 18%
+        gstAmount: { 
+          $multiply: [ 
+            "$originalBaseTotal", 
+            { $divide: [gstRate, 100] } 
+         ]
+        },
+        
+        // Correct Margin: Base Total * 20%
+        marginAmount: {
+          $multiply: [
+            "$originalBaseTotal",
+            { $divide: [marginRate, 100] }
+          ]
+        },
+        
+        travelAndEarnFee: { $literal: teFee },
+        
+        // This now correctly uses the originalBaseTotal
+        remainingAmount: {
+          $subtract: [
+            { $subtract: [
+                { $subtract: [ "$originalBaseTotal", "$marginAmount" ] }, // (Base - Margin)
+                { $literal: teFee } // - teFee
+            ] },
+            "$travellerEarning" // - travellerEarning
+          ]
+        }
+      },
+    },
      { $sort: { createdAt: -1 } },
    ];
    const stats = await TravelConsignments.aggregate(basePipeline);
@@ -646,8 +283,8 @@ export const getSenderReport = async (req: AdminAuthRequest, res: Response) => {
 export const getSalesReport = async (req: AdminAuthRequest, res: Response) => {
   try {
     const { period, fromDate, toDate } = req.query;
-    const dateFilter: { createdAt?: { $gte?: Date; $lte?: Date } } = {};
 
+    const dateFilter: { createdAt?: { $gte?: Date; $lte?: Date } } = {};
     if (period === "weekly") {
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -661,19 +298,27 @@ export const getSalesReport = async (req: AdminAuthRequest, res: Response) => {
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
       dateFilter.createdAt = { $gte: oneYearAgo };
     } else if (fromDate && toDate) {
+      const startDate = new Date(fromDate as string);
+      startDate.setHours(0, 0, 0, 0); // Start of the day
+      const endDate = new Date(toDate as string);
+      endDate.setHours(23, 59, 59, 999); // End of the day
+      
       dateFilter.createdAt = {
-        $gte: new Date(fromDate as string),
-        $lte: new Date(toDate as string),
+        $gte: startDate,
+        $lte: endDate,
       };
     }
 
-    const pipeline = [
-      { $match: { status: "completed", ...dateFilter } },
-      
-      
+    // 2. Aggregation Pipeline
+    // We start from 'TravelConsignments' as it links all the data
+    const pipeline: PipelineStage[] = [
+      // Filter by "delivered" status and the date range
+      { $match: { status: "delivered", ...dateFilter } },
+
+      // Get Travel Info (for modeOfTravel)
       {
         $lookup: {
-          from: "travels",
+          from: "travels", // Collection name for TravelModel
           localField: "travelId",
           foreignField: "_id",
           as: "travelInfo",
@@ -681,109 +326,137 @@ export const getSalesReport = async (req: AdminAuthRequest, res: Response) => {
       },
       { $unwind: { path: "$travelInfo", preserveNullAndEmptyArrays: true } },
 
-      
+      // Get Consignment Info (for region)
+      {
+        $lookup: {
+          from: "consignments", // Collection name for ConsignmentModel
+          localField: "consignmentId",
+          foreignField: "_id",
+          as: "consignmentInfo",
+        },
+      },
+      { $unwind: { path: "$consignmentInfo", preserveNullAndEmptyArrays: true } },
+
+      // Group all matching documents into one
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: { $cond: [{ $eq: ["$type", "sender_pay"] }, "$amount", 0] } },
-          totalPayouts: { $sum: { $cond: [{ $eq: ["$type", "traveller_earning"] }, "$amount", 0] } },
-          platformCommission: { $sum: { $cond: [{ $eq: ["$type", "platform_commission"] }, "$amount", 0] } }, 
-          senderPayCount: { $sum: { $cond: [{ $eq: ["$type", "sender_pay"] }, 1, 0] } },
-          travellerEarningCount: { $sum: { $cond: [{ $eq: ["$type", "traveller_earning"] }, 1, 0] } },
-          platformCommissionCount: { $sum: { $cond: [{ $eq: ["$type", "platform_commission"] }, 1, 0] } }, 
-          allPayments: { $push: "$$ROOT" }
-        }
+          // Sum up the amounts from the TravelConsignments schema
+          totalRevenue: { $sum: "$senderToPay" },
+          totalPayouts: { $sum: "$travellerEarning" },
+          platformCommission: { $sum: "$platformCommission" },
+          // Count the total number of delivered transactions
+          totalTransactionCount: { $sum: 1 },
+          // Collect all the joined documents for the region breakdown
+          allTransactions: { $push: "$$ROOT" },
+        },
       },
 
-      
+      // Project the final structure
       {
         $project: {
           _id: 0,
+          // Summary object for the main table
           summary: {
-            totalRevenue: "$totalRevenue",
-            totalPayouts: "$totalPayouts",
-            platformCommission: "$platformCommission",
+            totalRevenue: { $ifNull: ["$totalRevenue", 0] },
+            totalPayouts: { $ifNull: ["$totalPayouts", 0] },
+            platformCommission: { $ifNull: ["$platformCommission", 0] },
+            // Net revenue is what the platform keeps
             netRevenue: { $subtract: ["$totalRevenue", "$totalPayouts"] },
-            totalTransactions: { $size: "$allPayments" },
-            senderPayCount: "$senderPayCount",
-            travellerEarningCount: "$travellerEarningCount",
-            platformCommissionCount: "$platformCommissionCount", 
+            // Your frontend expects counts for each type. In this schema,
+            // one transaction has all 3 components, so the count is the same.
+            senderPayCount: { $ifNull: ["$totalTransactionCount", 0] },
+            travellerEarningCount: { $ifNull: ["$totalTransactionCount", 0] },
+            platformCommissionCount: { $ifNull: ["$totalTransactionCount", 0] },
+            totalTransactions: { $ifNull: ["$totalTransactionCount", 0] },
           },
+          // Region breakdown object for the modal
           regionBreakdown: {
+            // Data for when "Sender Pay" is clicked
             sender_pay: {
-              $filter: {
-                input: "$allPayments", as: "payment", cond: { $eq: ["$$payment.type", "sender_pay"] }
-              }
+              $map: {
+                input: "$allTransactions",
+                as: "tx",
+                in: {
+                  region: {
+                    $concat: [
+                      { $ifNull: ["$$tx.consignmentInfo.fromAddress.city", "N/A"] },
+                      ", ",
+                      { $ifNull: ["$$tx.consignmentInfo.fromAddress.state", "N/A"] },
+                    ],
+                  },
+                  modeOfTravel: { $ifNull: ["$$tx.travelInfo.modeOfTravel", "N/A"] },
+                  totalAmount: { $ifNull: ["$$tx.senderToPay", 0] },
+                },
+              },
             },
+            // Data for when "Traveller Earning" is clicked
             traveller_earning: {
-              $filter: {
-                input: "$allPayments", as: "payment", cond: { $eq: ["$$payment.type", "traveller_earning"] }
-              }
+              $map: {
+                input: "$allTransactions",
+                as: "tx",
+                in: {
+                  region: {
+                    $concat: [
+                      { $ifNull: ["$$tx.consignmentInfo.fromAddress.city", "N/A"] },
+                      ", ",
+                      { $ifNull: ["$$tx.consignmentInfo.fromAddress.state", "N/A"] },
+                    ],
+                  },
+                  modeOfTravel: { $ifNull: ["$$tx.travelInfo.modeOfTravel", "N/A"] },
+                  totalAmount: { $ifNull: ["$$tx.travellerEarning", 0] },
+                },
+              },
             },
-            platform_commission: { 
-              $filter: {
-                input: "$allPayments", as: "payment", cond: { $eq: ["$$payment.type", "platform_commission"] }
-              }
-            }
-          }
-        }
+            // Data for when "Platform Commission" is clicked
+            platform_commission: {
+              $map: {
+                input: "$allTransactions",
+                as: "tx",
+                in: {
+                  region: {
+                    $concat: [
+                      { $ifNull: ["$$tx.consignmentInfo.fromAddress.city", "N/A"] },
+                      ", ",
+                      { $ifNull: ["$$tx.consignmentInfo.fromAddress.state", "N/A"] },
+                    ],
+                  },
+                  modeOfTravel: { $ifNull: ["$$tx.travelInfo.modeOfTravel", "N/A"] },
+                  totalAmount: { $ifNull: ["$$tx.platformCommission", 0] },
+                },
+              },
+            },
+          },
+        },
       },
-      
-      {
-        $project:{
-          summary:1,
-          "regionBreakdown.sender_pay": {
-            $map: {
-              input: "$regionBreakdown.sender_pay",
-              as: "p",
-              in: { 
-              
-                region: { $concat: ["$$p.travelInfo.fromAddress.city", ", ", "$$p.travelInfo.fromAddress.state"] }, 
-                totalAmount: "$$p.amount",
-                
-                modeOfTravel: "$$p.travelInfo.modeOfTravel" 
-              }
-            }
-          },
-          "regionBreakdown.traveller_earning": {
-            $map: {
-              input: "$regionBreakdown.traveller_earning",
-              as: "p",
-              in: { 
-                region: { $concat: ["$$p.travelInfo.fromAddress.city", ", ", "$$p.travelInfo.fromAddress.state"] }, 
-                totalAmount: "$$p.amount",
-                
-                modeOfTravel: "$$p.travelInfo.modeOfTravel"
-              }
-            }
-          },
-          "regionBreakdown.platform_commission": { 
-            $map: {
-              input: "$regionBreakdown.platform_commission",
-              as: "p",
-              in: { 
-                region: { $concat: ["$$p.travelInfo.fromAddress.city", ", ", "$$p.travelInfo.fromAddress.state"] }, 
-                totalAmount: "$$p.amount",
-                modeOfTravel: "$$p.travelInfo.modeOfTravel"
-              }
-            }
-          }
-        }
-      }
     ];
 
-    const results = await Payment.aggregate(pipeline);
+    // 3. Execute Aggregation
+    // We run the pipeline on the 'TravelConsignments' model
+    const results = await TravelConsignments.aggregate(pipeline);
 
+    // 4. Handle Empty Results
+    // This is the default object if no data is found
     const data = results[0] || {
       summary: {
-        totalRevenue: 0, totalPayouts: 0,  platformCommission: 0, netRevenue: 0, 
-        totalTransactions: 0, senderPayCount: 0, travellerEarningCount: 0,  platformCommissionCount: 0,
+        totalRevenue: 0,
+        totalPayouts: 0,
+        platformCommission: 0,
+        netRevenue: 0,
+        totalTransactions: 0,
+        senderPayCount: 0,
+        travellerEarningCount: 0,
+        platformCommissionCount: 0,
       },
-      regionBreakdown: { sender_pay: [], traveller_earning: [], platform_commission: [] } 
+      regionBreakdown: {
+        sender_pay: [],
+        traveller_earning: [],
+        platform_commission: [],
+      },
     };
 
+    // 5. Send Response (Unchanged)
     res.status(200).json({ success: true, data });
-
   } catch (error) {
     console.error("Error fetching sales report:", error);
     res.status(500).json({
@@ -792,8 +465,6 @@ export const getSalesReport = async (req: AdminAuthRequest, res: Response) => {
     });
   }
 };
-
-
 export const getSenderConsignmentDetails = async (
   req: AdminAuthRequest,
   res: Response
@@ -870,9 +541,11 @@ export const getSenderConsignmentDetails = async (
                 else: { $ifNull: [ "$paymentInfo.status", "Pending" ] } // Show 'pending' or 'failed' if present
             }
           },
-          consignmentStatus: {
+          consignmentStatus:"$status",
+          travelConsignmentStatus:
+          {
             $ifNull: ["$travelConsignmentInfo.status", "$status"],
-          }, // Prioritize the more specific status
+          }, 
           dateOfSending: "$sendingDate",
           weight: {
             $concat: [{ $toString: "$weight" }, " ", "$weightUnit"],
@@ -880,6 +553,7 @@ export const getSenderConsignmentDetails = async (
           receiverName: "$receiverName",
           receiverPhone: "$receiverPhone",
           earnings: { $ifNull: ["$travelConsignmentInfo.travellerEarning", 0] },
+          senderPayAmount: { $ifNull: ["$travelConsignmentInfo.senderToPay", 0]  },
         },
       },
       // Stage 5: Sort by most recent consignments
@@ -917,51 +591,28 @@ export const getTravellerReport = async (req: AdminAuthRequest, res: Response) =
         const skip = (page - 1) * limit;
         const search = (req.query.search as string) || "";
 
-        // Base pipeline now starts from TravelConsignments
-        const basePipeline :PipelineStage[] =[
-            // Stage 1: Lookup Travel to get travelerId
-            {
-                $lookup: {
-                    from: "travels",
-                    localField: "travelId",
-                    foreignField: "_id",
-                    as: "travelDetails",
-                },
-            },
-            {
-                $unwind: "$travelDetails" // Unwind to filter by traveler
-            },
-            // Stage 2: Group by travelerId to get all stats
+        // Base pipeline now starts from TRAVELS
+        const basePipeline: PipelineStage[] = [
+            // Stage 1: Group all travels by travelerId first
             {
                 $group: {
-                    _id: "$travelDetails.travelerId", // Group by the traveler
-                    
-                    // --- *** LOGIC FIX AS REQUESTED *** ---
-                    // 1. Sum earnings ONLY if status is "delivered"
-                    // We check the status on the TravelConsignments document
-                    totalEarnings: {
-                        $sum: {
-                            $cond: [ { $eq: ["$status", "delivered"] }, "$travellerEarning", 0 ]
-                        }
-                    },
-                    // 2. Count ALL consignments
-                    consignmentCount: { $sum: 1 },
-                },
+                    _id: "$travelerId",
+                    travelIds: { $push: "$_id" } // Collect all travel IDs for this user
+                }
             },
-            // Stage 3: Lookup user details for the traveler
+            // Stage 2: Lookup user info
             {
                 $lookup: {
                     from: "users",
                     localField: "_id",
                     foreignField: "_id",
-                    as: "travelerInfo",
-                },
+                    as: "travelerInfo"
+                }
             },
-            // Stage 4: Unwind travelerInfo (acts as inner join, filters out deleted users)
-            {
-                 $unwind: "$travelerInfo"
-            },
-            // Stage 5: Apply search filter
+            // Stage 3: Unwind user info (this filters out orphan travels)
+            { $unwind: "$travelerInfo" },
+            
+            // Stage 4: Apply search filter (can now search by user info)
             {
                  $match: search ? {
                     $or: [
@@ -972,16 +623,41 @@ export const getTravellerReport = async (req: AdminAuthRequest, res: Response) =
                     ]
                 } : {}
             },
-             // Stage 6: Final Project
-             {
+
+            // Stage 5: Lookup ALL travel consignments linked to this user's travels
+            {
+                $lookup: {
+                    from: "travelconsignments",
+                    localField: "travelIds", // Use the array of travel IDs
+                    foreignField: "travelId",
+                    as: "allConsignments" // Get all linked consignments
+                }
+            },
+
+            // Stage 6: Final Project to calculate counts and earnings
+            {
                 $project: {
                     _id: 0,
                     travellerId: { $toString: "$_id" },
                     name: { $concat: ["$travelerInfo.firstName", " ", "$travelerInfo.lastName"] },
                     email: "$travelerInfo.email",
                     phone: "$travelerInfo.phoneNumber",
-                    consignmentCount: 1, // This will be the total count (e.g., 16)
-                    totalEarnings: 1      // This will be the conditional sum (e.g., 13,350.00)
+
+                    // 1. Count ALL consignments
+                    consignmentCount: { $size: "$allConsignments" },
+                    
+                    // 2. Sum earnings ONLY from "delivered" consignments
+                    totalEarnings: {
+                        $sum: {
+                            $map: {
+                                input: "$allConsignments",
+                                as: "tc",
+                                in: {
+                                    $cond: [ { $eq: ["$$tc.status", "delivered"] }, "$$tc.travellerEarning", 0 ]
+                                }
+                            }
+                        }
+                    }
                 }
              },
              // Stage 7: Sort
@@ -989,12 +665,12 @@ export const getTravellerReport = async (req: AdminAuthRequest, res: Response) =
         ];
 
         // --- Execute Aggregations for Count and Data ---
-        const countPipeline = [...basePipeline, { $count: "total" }];
-        const dataPipeline = [...basePipeline, { $skip: skip }, { $limit: limit }];
+        const countPipeline: PipelineStage[] = [...basePipeline, { $count: "total" }];
+        const dataPipeline: PipelineStage[] = [...basePipeline, { $skip: skip }, { $limit: limit }];
 
         const [totalResult, stats] = await Promise.all([
-             TravelConsignments.aggregate(countPipeline), // Base collection is now TravelConsignments
-             TravelConsignments.aggregate(dataPipeline)   // Base collection is now TravelConsignments
+             TravelModel.aggregate(countPipeline), // Base collection is now TravelModel
+             TravelModel.aggregate(dataPipeline)   // Base collection is now TravelModel
         ]);
 
         const totalTravellers = totalResult[0]?.total || 0;
@@ -1015,6 +691,7 @@ export const getTravellerReport = async (req: AdminAuthRequest, res: Response) =
         });
     }
 };
+
 export const getTravelerConsignmentDetails = async (
   req: AdminAuthRequest,
   res: Response
@@ -1034,43 +711,44 @@ export const getTravelerConsignmentDetails = async (
     }
     const travelerId = traveler._id;
 
-    // Use aggregate pipeline for efficiency
-    const consignments = await TravelConsignments.aggregate([
-      // Stage 1: Lookup Travel details
-      {
-        $lookup: {
-          from: "travels",
-          localField: "travelId",
-          foreignField: "_id",
-          as: "travelDetails",
-        },
-      },
-      {
-        $unwind: "$travelDetails",
-      },
-      // Stage 2: Match travels for the specified traveler
+    // This pipeline now starts from Travels
+    const results = await TravelModel.aggregate([
+      // Stage 1: Find all travels for this user
       {
         $match: {
-          "travelDetails.travelerId": travelerId,
+          travelerId: travelerId,
         },
       },
-      // Stage 3: Lookup Consignment details
+      // Stage 2: Left-join TravelConsignments
+      {
+        $lookup: {
+          from: "travelconsignments",
+          localField: "_id",
+          foreignField: "travelId",
+          as: "tcInfo",
+        },
+      },
+      // Stage 3: Unwind the results, keeping travels with no consignments
+      {
+        $unwind: { path: "$tcInfo", preserveNullAndEmptyArrays: true }
+      },
+      // Stage 4: Left-join Consignment details (if tcInfo exists)
       {
         $lookup: {
           from: "consignments",
-          localField: "consignmentId",
+          localField: "tcInfo.consignmentId",
           foreignField: "_id",
           as: "consignmentDetails",
         },
       },
       {
-        $unwind: "$consignmentDetails",
+        $unwind: { path: "$consignmentDetails", preserveNullAndEmptyArrays: true }
       },
-      // Stage 4: Lookup Payment details
+      // Stage 5: Left-join Payment details (if tcInfo exists)
       {
         $lookup: {
           from: "payments",
-          let: { consignment_id: "$consignmentId", travel_id: "$travelId" },
+          let: { consignment_id: "$tcInfo.consignmentId", travel_id: "$_id" },
           pipeline: [
             {
               $match: {
@@ -1092,31 +770,39 @@ export const getTravelerConsignmentDetails = async (
       {
         $unwind: { path: "$paymentDetails", preserveNullAndEmptyArrays: true },
       },
-      // Stage 5: Project the desired fields
+      // Stage 6: Project the final combined data
       {
         $project: {
           _id: 0,
-          consignmentId: { $toString: "$consignmentDetails._id" },
-          startingLocation: "$consignmentDetails.fromAddress.city",
-          endingLocation: "$consignmentDetails.toAddress.city",
-          paymentStatus: { $ifNull: ["$paymentDetails.status", "Pending"] },
-          consignmentStatus: "$consignmentDetails.status",
-          dateOfSending: "$consignmentDetails.sendingDate",
-          weight: { $concat: [{ $toString: "$consignmentDetails.weight" }, " ", "$consignmentDetails.weightUnit"] },
-          receiverName: "$consignmentDetails.receiverName",
-          receiverPhone: "$consignmentDetails.receiverPhone",
-          earnings: "$travellerEarning",
-          carryStatus: "$status", // Status from TravelConsignments
-          modeOfTravel: "$travelDetails.modeOfTravel"
+          travelId: { $toString: "$_id" },
+          modeOfTravel: "$modeOfTravel",
+          travelStatus: "$status",
+          
+          // --- Use $ifNull to provide defaults for all consignment/payment fields ---
+          consignmentId: { $ifNull: [ { $toString: "$consignmentDetails._id" }, "N/A" ] },
+          startingLocation: { $ifNull: [ "$consignmentDetails.fromAddress.city", "N/A" ] },
+          endingLocation: { $ifNull: [ "$consignmentDetails.toAddress.city", "N/A" ] },
+          paymentStatus: { $ifNull: ["$paymentDetails.status", "N/A"] },
+          consignmentStatus: { $ifNull: [ "$consignmentDetails.status", "N/A" ] },
+          dateOfSending: { $ifNull: [ "$consignmentDetails.sendingDate", null ] },
+          weight: { 
+            $ifNull: [ 
+              { $concat: [{ $toString: "$consignmentDetails.weight" }, " ", "$consignmentDetails.weightUnit"] }, 
+              "N/A" 
+            ] 
+          },
+          receiverName: { $ifNull: [ "$consignmentDetails.receiverName", "N/A" ] },
+          receiverPhone: { $ifNull: [ "$consignmentDetails.receiverPhone", "N/A" ] },
+          earnings: { $ifNull: [ "$tcInfo.travellerEarning", 0 ] }, // Default earnings to 0
+          carryStatus: { $ifNull: [ "$tcInfo.status", "N/A" ] }, // Status from TravelConsignments
         },
       },
-      { $sort: { dateOfSending: -1 } }
+      { $sort: { dateOfSending: -1, travelId: -1 } } // Sort by date, then travelId
     ]);
     
     // --- *** LOGIC FIX AS REQUESTED *** ---
     // Calculate the total earnings for "delivered" consignments ONLY.
-    // The modal's 'Total Earnings' will now be based on this value.
-    const totalDeliveredEarnings = consignments.reduce((sum, c) => {
+    const totalDeliveredEarnings = results.reduce((sum, c) => {
         // Use carryStatus, which is the status from TravelConsignments
         if (c.carryStatus === 'delivered') {
             return sum + (c.earnings || 0);
@@ -1124,16 +810,23 @@ export const getTravelerConsignmentDetails = async (
         return sum;
     }, 0);
 
-    // The modal's 'Total Consignments' will be the full count.
-    const totalConsignments = consignments.length;
-    console.log("Total Consignments:", totalConsignments);
+    // The modal's 'Total Consignments' will be the full count of ALL items (travels + consignments)
+    // This part might need adjustment depending on how you want to count "empty" travels
+    // This counts "travels with consignments" + "travels without consignments"
+    const totalItems = results.length;
+    
+    // This counts only items that are actual consignments
+    const totalConsignments = results.filter(c => c.consignmentId !== "N/A").length;
+    
+    console.log("Total Items (Travels + Consignments):", totalItems);
+    console.log("Total Actual Consignments:", totalConsignments);
     console.log("Total Delivered Earnings:", totalDeliveredEarnings); 
-    //console.log("Consignments Data:", consignments);
+
     res.status(200).json({
       success: true,
-      count: totalConsignments, // This will be 16
-      totalAcceptedEarnings: totalDeliveredEarnings, // This will be 13,350.00
-      data: consignments, // This will be the list of 16 consignments
+      count: totalConsignments, // Send the count of actual consignments
+      totalAcceptedEarnings: totalDeliveredEarnings,
+      data: results, // Send the full list of items (travels + consignments)
     });
   } catch (error) {
     console.error("Error fetching traveler consignment details:", error);
@@ -1145,11 +838,14 @@ export const getTravelerConsignmentDetails = async (
   }
 };
 
+
+
 export const cancelConsignment = async (req: AdminAuthRequest, res: Response) => {
     try {
         const { consignmentId } = req.params;
 
         if (!consignmentId||!mongoose.Types.ObjectId.isValid(consignmentId)) {
+          console.log("Invalid Consignment ID format:", consignmentId);
             return res.status(400).json({ success: false, message: "Invalid Consignment ID format." });
         }
 
@@ -1159,20 +855,21 @@ export const cancelConsignment = async (req: AdminAuthRequest, res: Response) =>
             return res.status(404).json({ success: false, message: "Consignment not found." });
         }
 
-        if (["delivered", "cancelled","in-transit"].includes(consignment.status)) {
+        if (["delivered", "cancelled","in-transit","expired"].includes(consignment.status)) {
+          console.log("Consignment current status:", consignment.status);
             return res.status(400).json({ success: false, message: `Consignment is already ${consignment.status}.` });
         }
 
         consignment.status = "cancelled";
         await consignment.save();
-
+        
         await TravelConsignments.updateMany(
-            { consignmentId: consignment._id },
-            { $set: { status: "cancelled" } }
-        );
+            { consignmentId: consignment._id, status: "to_handover" },
+            { $set: { status: "cancelled" } }
+        );
         
         await CarryRequest.updateMany(
-            { consignmentId: consignment._id, status: "accepted" },
+            { consignmentId: consignment._id, status:{$in: ["accepted","accepted_pending_payment","pending"] }},
             { $set: { status: "expired" } }
         );
 
@@ -1187,6 +884,75 @@ export const cancelConsignment = async (req: AdminAuthRequest, res: Response) =>
         res.status(500).json({
             success: false,
             message: "Internal Server Error while cancelling consignment",
+        });
+    }
+};
+
+export const adminCancelTravel = async (req: AdminAuthRequest, res: Response) => {
+    try {
+        const { travelId } = req.params;
+
+        // 1. Validate ID
+        if (!travelId || !mongoose.Types.ObjectId.isValid(travelId)) {
+            return res.status(400).json({ success: false, message: "Invalid Travel ID format." });
+        }
+
+        // 2. Find and Update the Travel document
+        const travel = await TravelModel.findById(travelId);
+
+        if (!travel) {
+            return res.status(404).json({ success: false, message: "Travel not found." });
+        }
+
+        if (["completed", "cancelled","ongoing","expired"].includes(travel.status)) {
+            return res.status(400).json({ success: false, message: `Travel is already ${travel.status}.` });
+        }
+
+        travel.status = "cancelled";
+        await travel.save();
+
+        // 3. Find all linked TravelConsignments
+        const linkedTCs = await TravelConsignments.find({ travelId: travelId });
+
+        if (linkedTCs.length > 0) {
+            const consignmentIds = linkedTCs.map(tc => tc.consignmentId);
+
+            // 4. Update TravelConsignments to "cancelled"
+            await TravelConsignments.updateMany(
+                { travelId: travelId, status: { $nin: ["delivered", "cancelled","in_transit"] } },
+                { $set: { status: "cancelled" } }
+            );
+
+            // 5. Update original Consignments from "assigned" back to "published"
+            await ConsignmentModel.updateMany(
+                { _id: { $in: consignmentIds }, status: { $in: ["delivered", "in-transit", "cancelled","expired"] } },
+                { $set: { status: "published" } }
+            );
+
+            // 6. Update associated "accepted" CarryRequests to "expired"
+            await CarryRequest.updateMany(
+                { travelId: travelId, status:{$in: ["accepted","pending","accepted_pending_payment"] }},
+                { $set: { status: "expired" } }
+            );
+
+            // 7. Cancel any pending Earnings for this traveler on this trip
+            await Earning.updateMany(
+                { travelId: travelId, userId: travel.travelerId, status: {$in:["pending","payout_pending"]} },
+                { $set: { status: "failed" } }
+            );
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Travel cancelled successfully. All associated consignments have been re-published.",
+            data: travel
+        });
+
+    } catch (error) {
+        console.error("Error cancelling travel:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error while cancelling travel",
         });
     }
 };
