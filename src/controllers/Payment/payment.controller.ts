@@ -1,10 +1,12 @@
 import axios from "axios";
 import crypto from "crypto";
 import type { Response } from "express";
+import { request } from "http";
 import mongoose from "mongoose";
 import env from "../../lib/env";
 import logger from "../../lib/logger";
 import { generateOtp } from "../../lib/utils";
+import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import type { AuthRequest } from "../../middlewares/authMiddleware";
 import { CarryRequest } from "../../models/carryRequest.model";
 import ConsignmentModel from "../../models/consignment.model";
@@ -12,13 +14,33 @@ import Earning from "../../models/earning.model";
 import FareConfigModel from "../../models/fareconfig.model";
 import Payment from "../../models/payment.model";
 import { Payout, type PayoutDoc } from "../../models/payout.model";
-import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
 import PayoutAccountsModel from "../../models/payoutaccounts.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
 import { emitPaymentFailed, emitPaymentSuccess } from "../../socket/events";
 import { razorpayRefundWebhook } from "./refund.payments";
-import { request } from "http";
+
+const normalizePhoneNumber = (phone: string): string => {
+  // Remove all spaces and dashes
+  let normalized = phone.replace(/[\s-]/g, "");
+
+  // If it starts with +91, keep it
+  if (normalized.startsWith("+91")) {
+    return normalized;
+  }
+
+  // If it starts with 91 (without +), add +
+  if (normalized.startsWith("91") && normalized.length === 12) {
+    return "+" + normalized;
+  }
+
+  // If it's 10 digits, add +91
+  if (normalized.length === 10) {
+    return "+91" + normalized;
+  }
+
+  return normalized;
+};
 
 // export const initiatePayment = async (req: AuthRequest, res: Response) => {
 //   const session = await mongoose.startSession();
@@ -390,43 +412,117 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           // console.log("Done with searching existing TravelConsignment...");
 
           if (!existingTravelConsignment) {
-            // console.log(
-            //   "Inside !existingTravelConsignment, searching for consignment..."
-            // );
+            logger.info("🔍 Fetching consignment for OTP generation...");
+
             const consignment = await ConsignmentModel.findById(
               payment.consignmentId
             )
-              .select("receiverPhone receiverName")
+              .select("receiverPhone receiverName senderId")
               .lean()
               .session(session);
             if (!consignment) throw new Error("consignment not found");
-            // console.log(
-            //   "Inside !existingTravelConsignment, done searching for consignment..."
-            // );
 
-            // console.log(
-            //   "Inside !existingTravelConsignment, searching for sender..."
-            // );
-            const sender = await User.findById(
-              carryRequest.requestedBy
-            ).session(session);
+            logger.info("✅ Consignment found, fetching users...");
+
+            // Fetch sender (the person who created the consignment)
+            const sender = await User.findById(carryRequest.requestedBy)
+              .select("phoneNumber firstName lastName")
+              .lean()
+              .session(session);
+
+            // Fetch traveller (to ensure we NEVER send OTP to them)
+            const traveller = await User.findById(carryRequest.travellerId)
+              .select("phoneNumber firstName lastName")
+              .lean()
+              .session(session);
+
+            if (!sender || !traveller) {
+              throw new Error("Sender or traveller not found");
+            }
+
             const receiver = consignment;
 
             if (!sender || !receiver)
               throw new Error("Sender or receiver not found");
 
-            // Generate OTPs now
+            // Normalize all phone numbers
+            const senderPhone = normalizePhoneNumber(sender.phoneNumber);
+            const receiverPhone = normalizePhoneNumber(
+              consignment.receiverPhone
+            );
+            const travellerPhone = normalizePhoneNumber(traveller.phoneNumber);
+
+            // 🚨 CRITICAL VALIDATION: Ensure traveller's phone is NEVER used for OTPs
+            logger.info("📞 Phone Numbers Check:");
+            logger.info(`   Sender: ${senderPhone}`);
+            logger.info(`   Receiver: ${receiverPhone}`);
+            logger.info(`   Traveller: ${travellerPhone}`);
+
+            // Validation check
+            if (receiverPhone === travellerPhone) {
+              logger.error(
+                "❌ CRITICAL ERROR: Receiver phone matches traveller phone!"
+              );
+              logger.error(
+                "This should NEVER happen. The consignment data is corrupted."
+              );
+              throw new Error(
+                "Invalid consignment: receiver phone cannot be traveller's phone"
+              );
+            }
+
+            if (senderPhone === travellerPhone) {
+              logger.error(
+                "❌ CRITICAL ERROR: Sender phone matches traveller phone!"
+              );
+              logger.error(
+                "This indicates carryRequest.requestedBy is pointing to traveller instead of sender."
+              );
+              throw new Error(
+                "Invalid carry request: sender cannot be the traveller"
+              );
+            }
+
+            // Log the relationship
+            const samePersonSendingAndReceiving = senderPhone === receiverPhone;
+            if (samePersonSendingAndReceiving) {
+              logger.info(
+                "📦 Same person is sender and receiver (self-delivery)"
+              );
+              logger.info("   Both OTPs will go to: " + senderPhone);
+            } else {
+              logger.info("📦 Different sender and receiver:");
+              logger.info(
+                `   Sender OTP → ${senderPhone} (${
+                  sender.firstName || "Unknown"
+                })`
+              );
+              logger.info(
+                `   Receiver OTP → ${receiverPhone} (${
+                  consignment.receiverName || "Unknown"
+                })`
+              );
+            }
+
+            logger.info("SENDER PHONE NUMBER => " + sender.phoneNumber);
+            logger.info("RECEIVER PHONE NUMBER => " + receiver.receiverPhone);
+
+            // Generate OTPs
+            logger.info("🔐 Generating OTPs...");
             const [senderOTPObj, receiverOTPObj] = await Promise.all([
-              generateOtp(sender.phoneNumber, "sender"),
-              generateOtp(receiver.receiverPhone, "receiver"),
+              generateOtp(senderPhone, "sender"),
+              generateOtp(receiverPhone, "receiver"),
             ]);
 
-            const senderOTP = senderOTPObj?.otp ?? "000000"; // fallback OTP
-            const receiverOTP = receiverOTPObj?.otp ?? "000000"; // fallback OTP
+            const senderOTP = senderOTPObj?.otp ?? "000000";
+            const receiverOTP = receiverOTPObj?.otp ?? "000000";
 
-            console.log(
-              `Generated OTPs - sender: ${senderOTP}, receiver: ${receiverOTP}`
-            );
+            logger.info(`✅ OTPs Generated Successfully:`);
+            logger.info(`   Sender OTP: ${senderOTP} → ${senderPhone}`);
+            logger.info(`   Receiver OTP: ${receiverOTP} → ${receiverPhone}`);
+
+            // Double-check before creating TravelConsignment
+            logger.info("📝 Creating TravelConsignment record...");
 
             // console.log(
             //   "Inside !existingTravelConsignment, done searching for sender, created otps..."
@@ -503,9 +599,9 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                 { session }
               );
             } catch (error) {
-              console.error(
-                "❌ Failed to create platoform commission payment record:",
-                error
+              logger.error(
+                "❌ Failed to create platform commission payment record:" +
+                  error
               );
             }
           }
@@ -741,7 +837,10 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
       }
       // ---------------REFUND EVENTS--------------
       else if (event.startsWith("refund.")) {
-         return await razorpayRefundWebhook(request as unknown as AdminAuthRequest, res);
+        return await razorpayRefundWebhook(
+          request as unknown as AdminAuthRequest,
+          res
+        );
       }
 
       await session.commitTransaction();
@@ -758,5 +857,3 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
     res.status(500).send("Internal server error");
   }
 };
-
-

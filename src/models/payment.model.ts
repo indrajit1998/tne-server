@@ -1,11 +1,11 @@
-import mongoose, { Schema, type Types} from "mongoose";
+import mongoose, { Schema, type Types } from "mongoose";
 interface RefundDetails {
   refundId?: string | null;
   amount?: number | null;
   speed?: string | null;
   status?: string | null;
 }
-interface Payment  {
+interface Payment {
   userId: Types.ObjectId;
   consignmentId: Types.ObjectId;
   travelId: Types.ObjectId;
@@ -29,7 +29,13 @@ interface Payment  {
 
 const paymentSchema = new Schema<Payment>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: function () {
+        return this.type !== "platform_commission"; // Not required for platform
+      },
+    },
     consignmentId: {
       type: Schema.Types.ObjectId,
       ref: "Consignment",
@@ -74,7 +80,6 @@ const paymentSchema = new Schema<Payment>(
       speed: { type: String, default: null },
       status: { type: String, default: null },
     },
-
   },
   { timestamps: true }
 );

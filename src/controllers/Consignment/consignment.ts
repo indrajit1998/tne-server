@@ -659,7 +659,7 @@ export const carryRequestByTraveller = async (
     const existingRequest = await CarryRequest.findOne({
       consignmentId: consignmentId,
       travellerId: travellerId,
-      requestedBy: travellerId,
+      requestedBy: consignmentSenderId, // Fixed here
       status: "pending",
     });
     if (existingRequest) {
@@ -672,7 +672,7 @@ export const carryRequestByTraveller = async (
     const carryRequestByTraveller = await CarryRequest.create({
       consignmentId: consignmentId,
       travellerId: travellerId,
-      requestedBy: travellerId,
+      requestedBy: consignmentSenderId,
       travelId: travelId,
       status: "pending",
       senderPayAmount: senderPay,
@@ -743,6 +743,129 @@ export const carryRequestByTraveller = async (
   }
 };
 
+// export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
+//   const session = await mongoose.startSession();
+
+//   try {
+//     session.startTransaction();
+
+//     const userId = req.user;
+//     if (!userId) {
+//       return res.status(401).json({ message: "Unauthorized: User ID missing" });
+//     }
+
+//     const { carryRequestId, travelId } = req.body;
+//     if (!carryRequestId) {
+//       return res.status(400).json({ message: "carryRequestId is required" });
+//     }
+
+//     const carryRequest = await CarryRequest.findOneAndUpdate(
+//       { _id: carryRequestId, status: "pending" },
+//       { status: "accepted_pending_payment" },
+//       { new: true, session }
+//     );
+//     if (!carryRequest) {
+//       throw new Error("Carry request already accepted or invalid");
+//     }
+
+//     const consignment = await ConsignmentModel.findById(
+//       carryRequest.consignmentId
+//     ).session(session);
+//     if (!consignment) {
+//       return res.status(404).json({ message: "No consignment found" });
+//     }
+
+//     const isTravellerInitiated =
+//       carryRequest.requestedBy.toString() ===
+//       carryRequest.travellerId.toString();
+
+//     if (
+//       isTravellerInitiated &&
+//       userId.toString() !== consignment.senderId.toString()
+//     ) {
+//       return res
+//         .status(403)
+//         .json({ message: "Only sender can accept this request" });
+//     }
+//     if (
+//       !isTravellerInitiated &&
+//       userId.toString() !== carryRequest.travellerId.toString()
+//     ) {
+//       return res
+//         .status(403)
+//         .json({ message: "Only traveller can accept this request" });
+//     }
+
+//     // Update carryRequest status in DB
+//     carryRequest.status = "accepted_pending_payment";
+//     await carryRequest.save({ session });
+
+//     // Notify traveller
+//     await emitCarryRequestAccepted(carryRequest.travellerId.toString(), {
+//       requestId: carryRequest._id.toString(),
+//       consignmentId: carryRequest.consignmentId.toString(),
+//       travellerId: carryRequest.travellerId.toString(),
+//       requestedBy: carryRequest.requestedBy.toString(),
+//       status: "accepted_pending_payment",
+//       senderPayAmount: carryRequest.senderPayAmount,
+//       travellerEarning: carryRequest.travellerEarning,
+//     });
+
+//     // Update status to accepted_pending_payment
+//     carryRequest.status = "accepted_pending_payment";
+//     await carryRequest.save({ session });
+
+//     // Notify sender to initiate payment
+//     const sender = await User.findById(consignment.senderId).session(session);
+//     if (!sender) return res.status(404).json({ message: "Sender not found" });
+
+//     // Create notification for sender to initiate payment
+//     const notificationData = await Notification.create(
+//       [
+//         {
+//           userId: sender._id,
+//           title: "Carry Request Accepted",
+//           message: `Your carry request for consignment "${consignment.description}" has been accepted. Please proceed to payment.`,
+//           isRead: false,
+//           relatedConsignmentId: consignment._id,
+//           requestId: carryRequest._id,
+//           relatedTravelId: travelId,
+//         },
+//       ],
+//       { session }
+//     );
+
+//     if (!notificationData) {
+//       return res
+//         .status(500)
+//         .json({ message: "Error in creating notification" });
+//     }
+//     console.log(notificationData);
+
+//     await emitPaymentRequest((sender._id as Types.ObjectId).toString(), {
+//       consignmentId: consignment._id.toString(),
+//       carryRequestId: carryRequest._id.toString(),
+//       amount: carryRequest.senderPayAmount,
+//       travellerId: carryRequest.travellerId.toString(),
+//       travelId,
+//     });
+
+//     await session.commitTransaction();
+
+//     return res.status(200).json({
+//       message: "Carry request accepted, pending payment",
+//       carryRequest,
+//       notification: notificationData,
+//     });
+//   } catch (error: any) {
+//     await session.abortTransaction();
+//     console.error("Error in acceptCarryRequest:", error);
+//     return res.status(500).json({ message: "Internal server error" });
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
 export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
 
@@ -759,49 +882,54 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "carryRequestId is required" });
     }
 
-    const carryRequest = await CarryRequest.findOneAndUpdate(
-      { _id: carryRequestId, status: "pending" },
-      { status: "accepted_pending_payment" },
-      { new: true, session }
-    );
+    const carryRequest = await CarryRequest.findOne({
+      _id: carryRequestId,
+      status: "pending",
+    }).session(session);
+
     if (!carryRequest) {
-      throw new Error("Carry request already accepted or invalid");
+      await session.abortTransaction();
+      return res.status(404).json({
+        message: "Carry request not found or already processed",
+      });
     }
 
     const consignment = await ConsignmentModel.findById(
       carryRequest.consignmentId
     ).session(session);
+
     if (!consignment) {
+      await session.abortTransaction();
       return res.status(404).json({ message: "No consignment found" });
     }
 
-    const isTravellerInitiated =
-      carryRequest.requestedBy.toString() ===
-      carryRequest.travellerId.toString();
+    // 🚨 CRITICAL: Determine who should accept based on who the request is FOR
+    // After fix: requestedBy is ALWAYS the consignment sender (who will pay)
+    // So we need to check: is this sender accepting traveller's request, or traveller accepting sender's request?
 
-    if (
-      isTravellerInitiated &&
-      userId.toString() !== consignment.senderId.toString()
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Only sender can accept this request" });
-    }
-    if (
-      !isTravellerInitiated &&
-      userId.toString() !== carryRequest.travellerId.toString()
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Only traveller can accept this request" });
+    const isSenderAccepting =
+      userId.toString() === consignment.senderId.toString();
+    const isTravellerAccepting =
+      userId.toString() === carryRequest.travellerId.toString();
+
+    // Neither sender nor traveller? Not allowed
+    if (!isSenderAccepting && !isTravellerAccepting) {
+      await session.abortTransaction();
+      return res.status(403).json({
+        message: "You are not authorized to accept this request",
+      });
     }
 
-    // Update carryRequest status in DB
+    // Update status
     carryRequest.status = "accepted_pending_payment";
     await carryRequest.save({ session });
 
-    // Notify traveller
-    await emitCarryRequestAccepted(carryRequest.travellerId.toString(), {
+    // Notify the OTHER party (not the acceptor)
+    const notifyUserId = isSenderAccepting
+      ? carryRequest.travellerId.toString()
+      : consignment.senderId.toString();
+
+    await emitCarryRequestAccepted(notifyUserId, {
       requestId: carryRequest._id.toString(),
       consignmentId: carryRequest.consignmentId.toString(),
       travellerId: carryRequest.travellerId.toString(),
@@ -811,13 +939,12 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
       travellerEarning: carryRequest.travellerEarning,
     });
 
-    // Update status to accepted_pending_payment
-    carryRequest.status = "accepted_pending_payment";
-    await carryRequest.save({ session });
-
-    // Notify sender to initiate payment
+    // Notify sender to initiate payment (always the consignment sender)
     const sender = await User.findById(consignment.senderId).session(session);
-    if (!sender) return res.status(404).json({ message: "Sender not found" });
+    if (!sender) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Sender not found" });
+    }
 
     // Create notification for sender to initiate payment
     const notificationData = await Notification.create(
@@ -834,13 +961,6 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
       ],
       { session }
     );
-
-    if (!notificationData) {
-      return res
-        .status(500)
-        .json({ message: "Error in creating notification" });
-    }
-    console.log(notificationData);
 
     await emitPaymentRequest((sender._id as Types.ObjectId).toString(), {
       consignmentId: consignment._id.toString(),
@@ -885,11 +1005,22 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "No carry request found" });
     }
 
+    const consignment = await ConsignmentModel.findById(
+      carryRequest.consignmentId
+    ).select("senderId");
+    if (!consignment) {
+      return res.status(404).json({ message: "Consignment not found" });
+    }
+
+    if (!consignment) {
+      return res.status(404).json({ message: "No consignment found" });
+    }
+
     // Determine who is rejecting
     const isTravellerRejecting =
       carryRequest.travellerId.toString() === userId.toString();
     const isSenderRejecting =
-      carryRequest.requestedBy.toString() === userId.toString();
+      consignment.senderId.toString() === userId.toString();
 
     if (!isTravellerRejecting && !isSenderRejecting) {
       return res.status(403).json({
