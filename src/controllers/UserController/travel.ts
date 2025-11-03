@@ -228,6 +228,9 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
             { "fromAddress.state": { $in: fromRegexes } },
             { "fromAddress.city": { $in: fromRegexes } },
             { "fromAddress.street": { $in: fromRegexes } },
+            // Add combined state matching
+            { "fromAddress.state": { $regex: fromstate, $options: "i" } },
+            { "fromAddress.city": { $regex: fromstate, $options: "i" } },
           ],
         },
         {
@@ -235,6 +238,9 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
             { "toAddress.state": { $in: toRegexes } },
             { "toAddress.city": { $in: toRegexes } },
             { "toAddress.street": { $in: toRegexes } },
+            // Add combined state matching
+            { "toAddress.state": { $regex: tostate, $options: "i" } },
+            { "toAddress.city": { $regex: tostate, $options: "i" } },
           ],
         },
         {

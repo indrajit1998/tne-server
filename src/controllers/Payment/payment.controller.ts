@@ -263,6 +263,32 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // ✅ CRITICAL: If webhook already processed it, just return success
+    // This prevents overwriting the "completed" status from webhook
+    if (payment.status === "completed") {
+      logger.info(`✅ Payment already completed by webhook: ${paymentId}`);
+      return res.status(200).json({
+        message: "Payment already completed",
+        paymentId: payment._id,
+        status: "completed",
+      });
+    }
+
+    // Also check if it's already pending webhook (prevent duplicate processing)
+    if (
+      payment.status === "completed_pending_webhook" &&
+      payment.razorpayPaymentId === razorpayPaymentId
+    ) {
+      logger.info(
+        `✅ Payment already verified, awaiting webhook: ${paymentId}`
+      );
+      return res.status(200).json({
+        message: "Payment already verified, awaiting webhook",
+        paymentId: payment._id,
+        status: "completed_pending_webhook",
+      });
+    }
+
     // Check if payment has expired
     if (payment.expiresAt < new Date()) {
       session.startTransaction();
@@ -288,9 +314,16 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
 
     session.startTransaction();
 
-    payment.status = "completed_pending_webhook";
-    payment.razorpayPaymentId = razorpayPaymentId;
-    await payment.save({ session });
+    // ✅ Only update if not already completed
+    if (payment.status !== ("completed" as Payment["status"])) {
+      payment.status = "completed_pending_webhook";
+      payment.razorpayPaymentId = razorpayPaymentId;
+      await payment.save({ session });
+
+      logger.info(
+        `✅ Payment verified, status: completed_pending_webhook, awaiting webhook: ${paymentId}`
+      );
+    }
 
     await session.commitTransaction();
 
@@ -359,10 +392,30 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
         }
 
         if (event === "payment.captured") {
+          logger.info(
+            `🎯 Processing payment.captured webhook for order: ${razorpayOrderId}`
+          );
+
+          // ✅ Idempotency check: Skip if already completed
+          if (payment.status === "completed") {
+            logger.info(
+              `✅ Payment already completed, skipping webhook processing: ${razorpayOrderId}`
+            );
+            await session.abortTransaction();
+            return res.status(200).send("Payment already processed");
+          }
+
           // Update payment
           payment.status = "completed";
           payment.razorpayPaymentId = razorpayPaymentId;
           await payment.save({ session });
+
+          logger.info(
+            `✅ Payment status updated to COMPLETED: ${razorpayOrderId}`
+          );
+          logger.info(`   Payment ID: ${payment._id}`);
+          logger.info(`   Razorpay Payment ID: ${razorpayPaymentId}`);
+          logger.info(`   Status in DB: ${payment.status}`);
 
           // Update CarryRequest
           // console.log("Updating CarryRequest...");
@@ -374,7 +427,12 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             { status: "accepted" },
             { new: true, session }
           );
-          if (!carryRequest) throw new Error("CarryRequest not found");
+          if (!carryRequest) {
+            logger.error("❌ CarryRequest not found or already processed");
+            throw new Error("CarryRequest not found");
+          }
+
+          logger.info(`✅ CarryRequest updated to accepted`);
 
           // Update Consignment status to "assigned"
           // console.log("Updating Consignment status to 'assigned'...");
@@ -394,6 +452,8 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             throw new Error("Failed to update consignment to 'assigned'");
           }
 
+          logger.info(`✅ Consignment updated to assigned`);
+
           // // Calculate platform commission
           const fareConfig = await FareConfigModel.findOne()
             .sort({ createdAt: -1 })
@@ -406,8 +466,10 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             ((carryRequest.senderPayAmount * margin) / 100).toFixed(2)
           );
 
+          // ✅ Better idempotency check: Check by consignment + travel combination
           const existingTravelConsignment = await TravelConsignments.findOne({
-            paymentId: payment._id,
+            consignmentId: payment.consignmentId,
+            travelId: payment.travelId,
           }).session(session);
           // console.log("Done with searching existing TravelConsignment...");
 
