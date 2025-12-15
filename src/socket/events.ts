@@ -1,4 +1,5 @@
 import { getIO } from ".";
+import { removeLocation } from "./locationStore";
 import type {
   CarryRequestNotificationPayload,
   CarryRequestPayload,
@@ -82,4 +83,12 @@ export const emitPaymentRequest = async (
   payload: PaymentRequestPayload
 ) => {
   await emitToUser(senderId, "carry:payment:pending", payload);
+};
+
+/**
+ * Clean up location tracking when delivery is completed
+ */
+export const cleanupLocationTracking = async (travelConsignmentId: string) => {
+  removeLocation(travelConsignmentId);
+  console.log(`[Cleanup] Removed location tracking for ${travelConsignmentId}`);
 };

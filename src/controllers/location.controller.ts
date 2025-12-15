@@ -12,6 +12,7 @@ import {
 const getSuggestions = async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
+    // const limit = parseInt(req.query.limit as string) || 5;
 
     if (!query || query.trim() === "") {
       return res

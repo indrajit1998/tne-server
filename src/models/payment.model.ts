@@ -9,7 +9,7 @@ interface Payment {
   userId: Types.ObjectId;
   consignmentId: Types.ObjectId;
   travelId: Types.ObjectId;
-  // carryRequestId: Types.ObjectId;
+  carryRequestId: Types.ObjectId;
   type: "sender_pay" | "traveller_earning" | "platform_commission";
   amount: number;
   status:
@@ -42,11 +42,13 @@ const paymentSchema = new Schema<Payment>(
       required: true,
     },
     travelId: { type: Schema.Types.ObjectId, ref: "Travel", required: true },
-    // carryRequestId: {
-    //   type: Schema.Types.ObjectId,
-    //   ref: "CarryRequest",
-    //   required: true,
-    // },
+    carryRequestId: {
+      type: Schema.Types.ObjectId,
+      ref: "CarryRequest",
+      required: function () {
+        return this.type === "sender_pay"; // Only required for sender payments
+      },
+    },
     type: {
       type: String,
       enum: ["sender_pay", "traveller_earning", "platform_commission"],
@@ -69,8 +71,8 @@ const paymentSchema = new Schema<Payment>(
     expiresAt: {
       type: Date,
       required: true,
-      // Set default to 20 minutes from now
-      default: () => new Date(Date.now() + 20 * 60 * 1000),
+      // 15 minutes
+      default: () => new Date(Date.now() + 15 * 60 * 1000),
     },
     razorpayPaymentId: { type: String },
     razorpayOrderId: { type: String },
@@ -84,8 +86,9 @@ const paymentSchema = new Schema<Payment>(
   { timestamps: true }
 );
 
-// Add index for efficient queries
+// ✅ Add compound index for efficient queries and prevent duplicates
 paymentSchema.index({ carryRequestId: 1, status: 1 });
+paymentSchema.index({ consignmentId: 1, status: 1 }); // Keep for backward compatibility
 
 const Payment = mongoose.model<Payment>("Payments", paymentSchema);
 
