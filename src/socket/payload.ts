@@ -66,3 +66,25 @@ export interface NotificationPayload {
   relatedTravelId?: Types.ObjectId | string;
   isRead?: boolean;
 }
+
+export interface LocationEmitPayload {
+  travelConsignmentId: Types.ObjectId | string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+  heading?: number;
+  speed?: number;
+}
+
+export interface LocationUpdatePayload {
+  travelConsignmentId: Types.ObjectId | string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+  heading?: number;
+  speed?: number;
+}
+
+export interface LocationJoinPayload {
+  travelConsignmentId: Types.ObjectId | string;
+}

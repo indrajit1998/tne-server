@@ -1,6 +1,9 @@
 import type {
   CarryRequestNotificationPayload,
   CarryRequestPayload,
+  LocationEmitPayload,
+  LocationJoinPayload,
+  LocationUpdatePayload,
   PaymentPayload,
   PaymentRequestPayload,
   TravelConsignmentStatusPayload,
@@ -17,11 +20,22 @@ export interface ServerToClientEvents {
   "consignment:delivered": (data: TravelConsignmentStatusPayload) => void;
   "consignment:handover:failed": (data: TravelConsignmentStatusPayload) => void;
   "carry:payment:pending": (data: PaymentRequestPayload) => void;
+
+  // 🆕 ADD THESE NEW LOCATION EVENTS
+  "location:update": (data: LocationUpdatePayload) => void;
+  "connection:ack": (data: { message: string; userId: string }) => void;
+  "pong:server": (data: { time: string }) => void;
 }
 
 export interface ClientToServerEvents {
   "user:join": (userId: string) => void;
   "user:disconnect": (userId: string) => void;
+  "ping:client": () => void;
+
+  // 🆕 ADD THESE NEW LOCATION EVENTS
+  "location:join": (data: LocationJoinPayload) => void;
+  "location:leave": (travelConsignmentId: string) => void;
+  "location:emit": (data: LocationEmitPayload) => void;
 }
 
 export interface InterServerEvents {}

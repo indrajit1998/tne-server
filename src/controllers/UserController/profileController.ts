@@ -1,32 +1,31 @@
-import crypto from "crypto";
-import type { Response } from "express";
-import type { JwtPayload } from "jsonwebtoken";
-import mongoose, { Types } from "mongoose";
-import { v4 as uuidv4 } from "uuid";
-import { CODES } from "../../constants/statusCodes";
-import sendResponse from "../../lib/ApiResponse";
-import { encrypt, maskAccountNumber } from "../../lib/encryption.js";
-import logger from "../../lib/logger.js";
-import type { AuthRequest } from "../../middlewares/authMiddleware.js";
-import ConsignmentModel from "../../models/consignment.model.js";
-import Earning from "../../models/earning.model.js";
-import Payment from "../../models/payment.model.js";
-import { Payout } from "../../models/payout.model.js";
-import PayoutAccountsModel from "../../models/payoutaccounts.model.js";
-import { TravelModel } from "../../models/travel.model.js";
-import TravelConsignments from "../../models/travelconsignments.model.js";
-import { User } from "../../models/user.model";
+import crypto from 'crypto';
+import type { Response } from 'express';
+import type { JwtPayload } from 'jsonwebtoken';
+import mongoose, { Types } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
+import { CODES } from '../../constants/statusCodes';
+import sendResponse from '../../lib/ApiResponse';
+import { encrypt, maskAccountNumber } from '../../lib/encryption.js';
+import logger from '../../lib/logger.js';
+import type { AuthRequest } from '../../middlewares/authMiddleware.js';
+import ConsignmentModel from '../../models/consignment.model.js';
+import Earning from '../../models/earning.model.js';
+import Payment from '../../models/payment.model.js';
+import { Payout } from '../../models/payout.model.js';
+import PayoutAccountsModel from '../../models/payoutaccounts.model.js';
+import { TravelModel } from '../../models/travel.model.js';
+import TravelConsignments from '../../models/travelconsignments.model.js';
+import { User } from '../../models/user.model';
 import {
   createBankFundAccount,
   createPayout,
   createRazorpayContactId,
   createVpaFundAccount,
   validateVpa,
-} from "../../services/razorpay.service.js";
-import { updateUserProfileSchema } from "../../validations/userProfile.validator.js";
+} from '../../services/razorpay.service.js';
+import { updateUserProfileSchema } from '../../validations/userProfile.validator.js';
 
-interface TravelConsignmentsPopulated
-  extends Omit<TravelConsignments, "travelId"> {
+interface TravelConsignmentsPopulated extends Omit<TravelConsignments, 'travelId'> {
   travelId: {
     _id: Types.ObjectId;
     travelerId: {
@@ -81,20 +80,15 @@ interface AssignedTraveller {
 
 // Helper function remains the same
 function isPopulatedTravel(travel: any): boolean {
-  return (
-    travel &&
-    typeof travel === "object" &&
-    "_id" in travel &&
-    "fromCoordinates" in travel
-  );
+  return travel && typeof travel === 'object' && '_id' in travel && 'fromCoordinates' in travel;
 }
 
 function isPopulatedConsignment(consignment: any): boolean {
   return (
     consignment &&
-    typeof consignment === "object" &&
-    "_id" in consignment &&
-    "fromCoordinates" in consignment
+    typeof consignment === 'object' &&
+    '_id' in consignment &&
+    'fromCoordinates' in consignment
   );
 }
 
@@ -108,66 +102,60 @@ const formatCoordinates = (coords?: Coordinates) => {
 
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = typeof req.user === "string" ? req.user : req.user?._id;
+    const userId = typeof req.user === 'string' ? req.user : req.user?._id;
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
-    const user = await User.findById(userId).select(
-      "-__v -createdAt -updatedAt"
-    );
+    const user = await User.findById(userId).select('-__v -createdAt -updatedAt');
 
     if (!user) {
       return res
         .status(CODES.NOT_FOUND)
-        .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
+        .json(sendResponse(CODES.NOT_FOUND, null, 'User not found'));
     }
     return res
       .status(CODES.OK)
-      .json(sendResponse(CODES.OK, user, "User profile fetched successfully"));
+      .json(sendResponse(CODES.OK, user, 'User profile fetched successfully'));
   } catch (error) {
-    logger.error("Error fetching user profile:" + error);
+    logger.error('Error fetching user profile:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(
-        sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
-      );
+      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Something went wrong'));
   }
 };
 
 export const updateUserProfile = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = typeof req.user === "string" ? req.user : req.user?._id;
+    const userId = typeof req.user === 'string' ? req.user : req.user?._id;
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
     // Validate input with Zod
     const parseResult = updateUserProfileSchema.safeParse(req.body);
     if (!parseResult.success) {
-      const errors = parseResult.error.issues.map((e) => e.message);
-      return res.status(400).json(sendResponse(400, null, errors.join(", ")));
+      const errors = parseResult.error.issues.map(e => e.message);
+      return res.status(400).json(sendResponse(400, null, errors.join(', ')));
     }
 
     const { firstName, lastName, email } = parseResult.data;
 
-    const user = await User.findById(userId).select("-bankDetails -kyc -__v");
+    const user = await User.findById(userId).select('-bankDetails -kyc -__v');
 
     if (!user) {
-      return res.status(404).json(sendResponse(404, null, "User not found"));
+      return res.status(404).json(sendResponse(404, null, 'User not found'));
     }
 
     // Restrict name updates if KYC verified
     if (user.isKYCVerified && (firstName || lastName)) {
       return res
         .status(400)
-        .json(
-          sendResponse(400, null, "Cannot update name after KYC verification")
-        );
+        .json(sendResponse(400, null, 'Cannot update name after KYC verification'));
     }
 
     //  Apply allowed updates
@@ -179,31 +167,27 @@ export const updateUserProfile = async (req: AuthRequest, res: Response) => {
 
     await user.save();
 
-    return res
-      .status(200)
-      .json(sendResponse(200, user, "Profile updated successfully"));
+    return res.status(200).json(sendResponse(200, user, 'Profile updated successfully'));
   } catch (err) {
-    console.error("Error updating user profile:", err);
+    console.error('Error updating user profile:', err);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating profile",
+      message: 'Server error while updating profile',
     });
   }
 };
 
-export const getTravelAndConsignment = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const getTravelAndConsignment = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
-    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     // ============================================================
     //  EXPIRATION LOGIC
@@ -213,10 +197,10 @@ export const getTravelAndConsignment = async (
     // Only expire "upcoming" travels that missed their expectedStartDate
     await TravelModel.updateMany(
       {
-        status: "upcoming",
-        expectedStartDate: { $lt: now },
+        status: 'upcoming',
+        expectedStartDate: { $lt: today },
       },
-      { $set: { status: "expired" } }
+      { $set: { status: 'expired' } },
     );
 
     // 2: Expire consignments that were never assigned
@@ -224,10 +208,10 @@ export const getTravelAndConsignment = async (
     // Optional: We can add 6-hour grace period by using new Date(now.getTime() - 6 * 60 * 60 * 1000)
     await ConsignmentModel.updateMany(
       {
-        status: { $in: ["published", "requested"] },
-        sendingDate: { $lt: now },
+        status: { $in: ['published', 'requested'] },
+        sendingDate: { $lt: today },
       },
-      { $set: { status: "expired" } }
+      { $set: { status: 'expired' } },
     );
 
     // Note: We do NOT expire:
@@ -238,33 +222,31 @@ export const getTravelAndConsignment = async (
     // 3: Fetch user's travels
     const travels = await TravelModel.find({ travelerId: userId })
       .populate(
-        "travelerId",
-        "firstName lastName email rating reviewCount tripsCompleted profilePictureUrl isVerified phoneNumber"
+        'travelerId',
+        'firstName lastName email rating reviewCount tripsCompleted profilePictureUrl isVerified phoneNumber',
       )
       .sort({ createdAt: -1 })
       .lean();
 
     // 4: Enrich travels with consignments
     const enrichedTravels = await Promise.all(
-      travels.map(async (travel) => {
+      travels.map(async travel => {
         const travelConsignmentsLinked = await TravelConsignments.find({
           travelId: travel._id,
         })
           .populate({
-            path: "consignmentId",
+            path: 'consignmentId',
             select:
-              "fromAddress toAddress fromCoordinates toCoordinates weight dimensions category description status receiverName receiverPhone",
+              'fromAddress toAddress fromCoordinates toCoordinates weight dimensions category description status receiverName receiverPhone',
           })
           .lean();
 
         return {
           ...travel,
-          fromCoordinates: formatCoordinates(
-            travel.fromCoordinates as Coordinates
-          ),
+          fromCoordinates: formatCoordinates(travel.fromCoordinates as Coordinates),
           toCoordinates: formatCoordinates(travel.toCoordinates as Coordinates),
           consignments: travelConsignmentsLinked
-            .map((tc) => {
+            .map(tc => {
               const consignment = tc.consignmentId as any;
               if (!isPopulatedConsignment(consignment)) return null;
 
@@ -278,46 +260,39 @@ export const getTravelAndConsignment = async (
             })
             .filter(Boolean),
         };
-      })
+      }),
     );
 
     // 5: Fetch user's consignments
     const consignments = await ConsignmentModel.find({ senderId: userId })
-      .populate(
-        "senderId",
-        "firstName lastName email phoneNumber profilePictureUrl"
-      )
+      .populate('senderId', 'firstName lastName email phoneNumber profilePictureUrl')
       .sort({ createdAt: -1 })
       .lean();
 
     // 6: Enrich consignments with travels
     const enrichedConsignments = await Promise.all(
-      consignments.map(async (consignment) => {
+      consignments.map(async consignment => {
         const travelConsignmentsLinked = await TravelConsignments.find({
           consignmentId: consignment._id,
         })
           .populate({
-            path: "travelId",
+            path: 'travelId',
             select:
-              "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate modeOfTravel status travelerId",
+              'fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate modeOfTravel status travelerId',
             populate: {
-              path: "travelerId",
+              path: 'travelerId',
               select:
-                "firstName lastName email rating reviewCount tripsCompleted profilePictureUrl isVerified phoneNumber",
+                'firstName lastName email rating reviewCount tripsCompleted profilePictureUrl isVerified phoneNumber',
             },
           })
           .lean();
 
         return {
           ...consignment,
-          fromCoordinates: formatCoordinates(
-            consignment.fromCoordinates as Coordinates
-          ),
-          toCoordinates: formatCoordinates(
-            consignment.toCoordinates as Coordinates
-          ),
+          fromCoordinates: formatCoordinates(consignment.fromCoordinates as Coordinates),
+          toCoordinates: formatCoordinates(consignment.toCoordinates as Coordinates),
           travels: travelConsignmentsLinked
-            .map((tc) => {
+            .map(tc => {
               const travel = tc.travelId as any;
               if (!isPopulatedTravel(travel)) return null;
 
@@ -331,7 +306,7 @@ export const getTravelAndConsignment = async (
             })
             .filter(Boolean),
         };
-      })
+      }),
     );
 
     // 7: Return response
@@ -341,71 +316,60 @@ export const getTravelAndConsignment = async (
         sendResponse(
           CODES.OK,
           { travels: enrichedTravels, consignments: enrichedConsignments },
-          "Travel and Consignment data fetched successfully"
-        )
+          'Travel and Consignment data fetched successfully',
+        ),
       );
   } catch (error) {
-    logger.error("Error fetching travel and consignment data:" + error);
+    logger.error('Error fetching travel and consignment data:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
         sendResponse(
           CODES.INTERNAL_SERVER_ERROR,
           null,
-          "Something went wrong while fetching travel and consignment data"
-        )
+          'Something went wrong while fetching travel and consignment data',
+        ),
       );
   }
 };
 
-export const createRazorpayCustomerId = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const createRazorpayCustomerId = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
     const user = await User.findById(userId);
     if (!user) {
       return res
         .status(CODES.NOT_FOUND)
-        .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
+        .json(sendResponse(CODES.NOT_FOUND, null, 'User not found'));
     }
 
     if (!user.onboardingCompleted) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(CODES.BAD_REQUEST, null, "User onboarding not completed")
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'User onboarding not completed'));
     }
 
     if (!user.email || !user.firstName || !user.lastName) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(CODES.BAD_REQUEST, null, "User email or name not found")
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'User email or name not found'));
     }
 
     const razorpayCustomerId = await createRazorpayContactId(
       `${user.firstName} ${user.lastName}`,
       user.email,
-      user.phoneNumber
+      user.phoneNumber,
     );
 
     user.razorpayCustomerId = razorpayCustomerId;
     await user.save();
 
-    return res
-      .status(CODES.OK)
-      .json(sendResponse(CODES.OK, { razorpayCustomerId }));
+    return res.status(CODES.OK).json(sendResponse(CODES.OK, { razorpayCustomerId }));
   } catch (error) {
-    logger.error("Error creating Razorpay customer ID:" + error);
+    logger.error('Error creating Razorpay customer ID:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(
-        sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
-      );
+      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Something went wrong'));
   }
 };
 
@@ -415,18 +379,18 @@ export const getUserBankDetails = async (req: AuthRequest, res: Response) => {
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
-    const user = await User.findById(userId).select("bankDetails").lean();
+    const user = await User.findById(userId).select('bankDetails').lean();
 
     if (!user || !user.bankDetails) {
       return res
         .status(CODES.NOT_FOUND)
-        .json(sendResponse(CODES.NOT_FOUND, null, "Bank details not found"));
+        .json(sendResponse(CODES.NOT_FOUND, null, 'Bank details not found'));
     }
 
-    console.log("BANK DETAILS IN BE => ", user.bankDetails);
+    // console.log("BANK DETAILS IN BE => ", user.bankDetails);
 
     // Return masked bank details
     return res.status(CODES.OK).json(
@@ -438,18 +402,18 @@ export const getUserBankDetails = async (req: AuthRequest, res: Response) => {
         branch: user.bankDetails.branch,
         isVerified: user.bankDetails.isVerified,
         razorpayFundAccountId: user.bankDetails.razorpayFundAccountId,
-      })
+      }),
     );
   } catch (error) {
-    logger.error("Error fetching bank details:" + error);
+    logger.error('Error fetching bank details:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
         sendResponse(
           CODES.INTERNAL_SERVER_ERROR,
           null,
-          "Something went wrong while fetching bank details"
-        )
+          'Something went wrong while fetching bank details',
+        ),
       );
   }
 };
@@ -461,7 +425,7 @@ export const getUserFundAccounts = async (req: AuthRequest, res: Response) => {
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
     const fundAccounts = await PayoutAccountsModel.find({ userId }).lean();
@@ -469,22 +433,20 @@ export const getUserFundAccounts = async (req: AuthRequest, res: Response) => {
     if (fundAccounts.length === 0) {
       return res
         .status(CODES.NOT_FOUND)
-        .json(sendResponse(CODES.NOT_FOUND, null, "Fund accounts not found"));
+        .json(sendResponse(CODES.NOT_FOUND, null, 'Fund accounts not found'));
     }
 
-    return res
-      .status(CODES.OK)
-      .json(sendResponse(CODES.OK, fundAccounts, "Fund accounts fetched"));
+    return res.status(CODES.OK).json(sendResponse(CODES.OK, fundAccounts, 'Fund accounts fetched'));
   } catch (error) {
-    logger.error("Error fetching fund accounts:" + error);
+    logger.error('Error fetching fund accounts:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
         sendResponse(
           CODES.INTERNAL_SERVER_ERROR,
           null,
-          "Something went wrong while fetching fund accounts"
-        )
+          'Something went wrong while fetching fund accounts',
+        ),
       );
   }
 };
@@ -498,63 +460,43 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
-    const { accountHolderName, accountNumber, ifscCode, bankName, branch } =
-      req.body;
+    const { accountHolderName, accountNumber, ifscCode, bankName, branch } = req.body;
 
     // Validation
-    if (
-      !accountHolderName ||
-      !accountNumber ||
-      !ifscCode ||
-      !bankName ||
-      !branch
-    ) {
+    if (!accountHolderName || !accountNumber || !ifscCode || !bankName || !branch) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(CODES.BAD_REQUEST, null, "All bank details are required")
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'All bank details are required'));
     }
 
     // Validate IFSC
     if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode.toUpperCase())) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(CODES.BAD_REQUEST, null, "Invalid IFSC code format")
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid IFSC code format'));
     }
 
     // Validate account number
     if (!/^\d{9,18}$/.test(accountNumber)) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(
-            CODES.BAD_REQUEST,
-            null,
-            "Invalid account number (9-18 digits)"
-          )
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid account number (9-18 digits)'));
     }
 
     const user = await User.findById(userId);
     if (!user) {
       return res
         .status(CODES.NOT_FOUND)
-        .json(sendResponse(CODES.NOT_FOUND, null, "User not found"));
+        .json(sendResponse(CODES.NOT_FOUND, null, 'User not found'));
     }
 
     // Encrypt and mask the account number
     const encryptedAccountNumber = encrypt(accountNumber);
     const maskedAccountNumber = maskAccountNumber(accountNumber);
-    const accountHash = crypto
-      .createHash("sha256")
-      .update(accountNumber)
-      .digest("hex");
+    const accountHash = crypto.createHash('sha256').update(accountNumber).digest('hex');
 
     session.startTransaction();
 
@@ -563,8 +505,8 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     if (!razorpayContactId) {
       razorpayContactId = await createRazorpayContactId(
         `${user.firstName} ${user.lastName}`,
-        user.email || "",
-        user.phoneNumber
+        user.email || '',
+        user.phoneNumber,
       );
       user.razorpayCustomerId = razorpayContactId;
     }
@@ -576,7 +518,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     const existingFundAccount = await PayoutAccountsModel.findOne({
       userId,
       accountHash,
-      accountType: "bank_account",
+      accountType: 'bank_account',
     }).session(session);
 
     if (existingFundAccount) {
@@ -587,7 +529,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
         razorpayContactId,
         accountHolderName,
         ifscCode.toUpperCase(),
-        accountNumber
+        accountNumber,
       );
 
       // Save to PayoutAccounts table
@@ -598,7 +540,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
             razorpayContactId,
             razorpayFundAccountId,
             displayName: `${user.firstName} ${user.lastName}`,
-            accountType: "bank_account",
+            accountType: 'bank_account',
             accountNumber: maskedAccountNumber,
             accountNumberEncrypted: encryptedAccountNumber,
             bankName,
@@ -606,7 +548,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
             accountHash,
           },
         ],
-        { session }
+        { session },
       );
     }
 
@@ -628,7 +570,7 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     await user.save({ session });
     await session.commitTransaction();
 
-    logger.info("Bank details saved successfully for user:" + userId);
+    logger.info('Bank details saved successfully for user:' + userId);
 
     return res.status(CODES.OK).json(
       sendResponse(
@@ -642,15 +584,15 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
           isVerified: user.bankDetails.isVerified,
           razorpayFundAccountId: user.bankDetails.razorpayFundAccountId,
         },
-        "Bank details saved successfully"
-      )
+        'Bank details saved successfully',
+      ),
     );
   } catch (error: any) {
     await session.abortTransaction();
-    logger.error("Error saving bank details:" + error);
+    logger.error('Error saving bank details:' + error);
 
     const status = error?.status || CODES.INTERNAL_SERVER_ERROR;
-    const message = error?.message || "Failed to save bank details";
+    const message = error?.message || 'Failed to save bank details';
 
     return res.status(status).json(sendResponse(status, null, message));
   } finally {
@@ -665,38 +607,30 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
     const { type, details } = req.body;
 
     // Only support bank_account now (keeping code extensible for future)
-    if (type !== "bank_account") {
+    if (type !== 'bank_account') {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(
-            CODES.BAD_REQUEST,
-            null,
-            "Only bank account is supported"
-          )
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Only bank account is supported'));
     }
 
     if (!type || !details) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(CODES.BAD_REQUEST, null, "All details are necessary")
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'All details are necessary'));
     }
 
     const userId = req.user;
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
     const user = await User.findById(userId);
     if (!user) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "User not found"));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'User not found'));
     }
 
     // ⚠️ NOTE: Misnamed field — 'razorpayCustomerId' is actually the Razorpay Contact ID
@@ -704,38 +638,36 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
 
     if (!razorpayContactId) {
       // Automatically create Razorpay contact for this user
-      logger.info("Razorpay customer ID not found — creating new one...");
+      logger.info('Razorpay customer ID not found — creating new one...');
 
       if (!user.email) {
         // Optionally, you can generate a placeholder email if none exists
-        logger.warn(
-          "No user email found — using placeholder for Razorpay contact creation"
-        );
+        logger.warn('No user email found — using placeholder for Razorpay contact creation');
       }
 
       // Create Razorpay contact
       try {
         razorpayContactId = await createRazorpayContactId(
           `${user.firstName} ${user.lastName}`,
-          user.email || "",
-          user.phoneNumber
+          user.email || '',
+          user.phoneNumber,
         );
 
         // Save in DB (field still named 'razorpayCustomerId')
         user.razorpayCustomerId = razorpayContactId;
         await user.save();
 
-        logger.info("Razorpay customer ID created:" + razorpayContactId);
+        logger.info('Razorpay customer ID created:' + razorpayContactId);
       } catch (err) {
-        logger.error("Failed to create Razorpay customer ID:" + err);
+        logger.error('Failed to create Razorpay customer ID:' + err);
         return res
           .status(CODES.INTERNAL_SERVER_ERROR)
           .json(
             sendResponse(
               CODES.INTERNAL_SERVER_ERROR,
               null,
-              "Failed to create Razorpay customer ID"
-            )
+              'Failed to create Razorpay customer ID',
+            ),
           );
       }
     }
@@ -746,29 +678,24 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
       let fundAccountId: string;
       let maskedDetails: any = {};
 
-      if (type === "bank_account") {
+      if (type === 'bank_account') {
         const { accountNumber, bankName, branch, ifsc, name } = details;
 
         if (!accountNumber || !bankName || !branch || !ifsc || !name) {
           throw {
             status: CODES.BAD_REQUEST,
-            message: "Incomplete bank account details",
+            message: 'Incomplete bank account details',
           };
         }
 
         if (ifsc.length !== 11) {
-          throw { status: CODES.BAD_REQUEST, message: "Invalid IFSC code" };
+          throw { status: CODES.BAD_REQUEST, message: 'Invalid IFSC code' };
         }
 
         // Mask and hash
-        const accountHash = crypto
-          .createHash("sha256")
-          .update(accountNumber)
-          .digest("hex");
+        const accountHash = crypto.createHash('sha256').update(accountNumber).digest('hex');
         maskedDetails.accountNumber =
-          accountNumber.length > 4
-            ? "****" + accountNumber.slice(-4)
-            : accountNumber;
+          accountNumber.length > 4 ? '****' + accountNumber.slice(-4) : accountNumber;
         maskedDetails.bankName = bankName;
         maskedDetails.branch = branch;
 
@@ -776,23 +703,18 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
         const existing = await PayoutAccountsModel.findOne({
           userId,
           accountHash,
-          accountType: "bank_account",
+          accountType: 'bank_account',
         }).session(session);
 
         if (existing) {
           throw {
             status: CODES.BAD_REQUEST,
-            message: "Bank account already added",
+            message: 'Bank account already added',
           };
         }
 
         // Create fund account on Razorpay
-        fundAccountId = await createBankFundAccount(
-          razorpayContactId,
-          name,
-          ifsc,
-          accountNumber
-        );
+        fundAccountId = await createBankFundAccount(razorpayContactId, name, ifsc, accountNumber);
 
         // Save in PayoutAccounts
         const newAccount = await PayoutAccountsModel.create(
@@ -802,18 +724,18 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
               razorpayContactId, // still named razorpayCustomerId in DB
               razorpayFundAccountId: fundAccountId,
               displayName,
-              accountType: "bank_account",
+              accountType: 'bank_account',
               ...maskedDetails,
               accountHash,
             },
           ],
-          { session }
+          { session },
         );
 
         if (!newAccount || !newAccount[0])
           throw {
             status: CODES.INTERNAL_SERVER_ERROR,
-            message: "Failed to create fund account",
+            message: 'Failed to create fund account',
           };
 
         // SYNC: Update user's bank details in profile
@@ -833,26 +755,23 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
         await user.save({ session });
 
         return newAccount[0];
-      } else if (type === "vpa") {
+      } else if (type === 'vpa') {
         const { vpa } = details;
-        if (!vpa)
-          throw { status: CODES.BAD_REQUEST, message: "VPA is required" };
+        if (!vpa) throw { status: CODES.BAD_REQUEST, message: 'VPA is required' };
 
         const isValidVpa = await validateVpa(vpa);
-        if (!isValidVpa.success)
-          throw { status: CODES.BAD_REQUEST, message: "Invalid VPA" };
+        if (!isValidVpa.success) throw { status: CODES.BAD_REQUEST, message: 'Invalid VPA' };
 
-        const vpaHash = crypto.createHash("sha256").update(vpa).digest("hex");
-        maskedDetails.vpa = vpa.replace(/(.{2}).+(@.+)/, "$1***$2");
+        const vpaHash = crypto.createHash('sha256').update(vpa).digest('hex');
+        maskedDetails.vpa = vpa.replace(/(.{2}).+(@.+)/, '$1***$2');
 
         const existing = await PayoutAccountsModel.findOne({
           userId,
           accountHash: vpaHash,
-          accountType: "vpa",
+          accountType: 'vpa',
         }).session(session);
 
-        if (existing)
-          throw { status: CODES.BAD_REQUEST, message: "VPA already added" };
+        if (existing) throw { status: CODES.BAD_REQUEST, message: 'VPA already added' };
 
         fundAccountId = await createVpaFundAccount(razorpayContactId, vpa);
 
@@ -863,42 +782,35 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
               razorpayContactId,
               razorpayFundAccountId: fundAccountId,
               displayName,
-              accountType: "vpa",
+              accountType: 'vpa',
               ...maskedDetails,
               accountHash: vpaHash,
             },
           ],
-          { session }
+          { session },
         );
 
         if (!newAccount || !newAccount[0])
           throw {
             status: CODES.INTERNAL_SERVER_ERROR,
-            message: "Failed to create VPA account",
+            message: 'Failed to create VPA account',
           };
 
         return newAccount[0];
       } else {
-        throw { status: CODES.BAD_REQUEST, message: "Invalid account type" };
+        throw { status: CODES.BAD_REQUEST, message: 'Invalid account type' };
       }
     });
 
     return res
       .status(CODES.CREATED)
-      .json(
-        sendResponse(
-          CODES.CREATED,
-          payoutAccount,
-          "Fund account added successfully"
-        )
-      );
+      .json(sendResponse(CODES.CREATED, payoutAccount, 'Fund account added successfully'));
   } catch (error: any) {
-    logger.error("Error adding fund account:" + error);
+    logger.error('Error adding fund account:' + error);
 
     // Custom error handling
     const status = error?.status || CODES.INTERNAL_SERVER_ERROR;
-    const message =
-      error?.message || "Something went wrong while adding fund account";
+    const message = error?.message || 'Something went wrong while adding fund account';
 
     return res.status(status).json(sendResponse(status, null, message));
   } finally {
@@ -913,17 +825,15 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
     const { earningId, fundAccountId } = req.body;
     const rawUser = req.user;
     const userId =
-      typeof rawUser === "string"
-        ? rawUser
-        : (rawUser as JwtPayload & { _id: string })._id;
+      typeof rawUser === 'string' ? rawUser : (rawUser as JwtPayload & { _id: string })._id;
 
-    console.log("fundAccountId => ", fundAccountId);
-    console.log("earningId => ", earningId);
+    console.log('fundAccountId => ', fundAccountId);
+    console.log('earningId => ', earningId);
 
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
     // 1. Fetch earning
@@ -931,32 +841,32 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
     if (!earning) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "Earning not found"));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Earning not found'));
     }
 
     if (String(earning.userId) !== String(userId)) {
       return res
         .status(CODES.FORBIDDEN)
-        .json(sendResponse(CODES.FORBIDDEN, null, "Not owner of this earning"));
+        .json(sendResponse(CODES.FORBIDDEN, null, 'Not owner of this earning'));
     }
 
     if (earning.is_withdrawn) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "Already withdrawn"));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Already withdrawn'));
     }
 
-    if (earning.status !== "completed") {
+    if (earning.status !== 'completed') {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "Earning not completed"));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Earning not completed'));
     }
 
     const amount = Number(earning.amount || 0);
     if (amount <= 0) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, "Invalid amount"));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid amount'));
     }
 
     // 2. Fetch user's fund account
@@ -967,13 +877,7 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
     if (!fundAccount) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(
-          sendResponse(
-            CODES.BAD_REQUEST,
-            null,
-            "Invalid or missing fund account"
-          )
-        );
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid or missing fund account'));
     }
 
     // 3. Start transaction
@@ -983,10 +887,10 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       const updated = await Earning.findOneAndUpdate(
         { _id: earning._id, is_withdrawn: false, payoutId: { $exists: false } },
         { $set: { payoutPending: true } },
-        { new: true, session }
+        { new: true, session },
       );
 
-      if (!updated) throw new Error("Earning already linked or withdrawn");
+      if (!updated) throw new Error('Earning already linked or withdrawn');
 
       // Create local payout
       const clientPayoutId = uuidv4();
@@ -997,17 +901,16 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
             travelId: earning.travelId ?? undefined,
             consignmentId: earning.consignmentId ?? undefined,
             amount,
-            status: "pending",
-            razorpayPayoutId: "",
+            status: 'pending',
+            razorpayPayoutId: '',
             clientPayoutId,
             earningIds: [earning._id],
           },
         ],
-        { session }
+        { session },
       );
 
-      if (!payoutDoc || !payoutDoc[0])
-        throw new Error("Failed to create local payout record");
+      if (!payoutDoc || !payoutDoc[0]) throw new Error('Failed to create local payout record');
 
       localPayout = payoutDoc[0];
 
@@ -1015,7 +918,7 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       await Earning.updateOne(
         { _id: earning._id },
         { $set: { payoutId: localPayout._id } },
-        { session }
+        { session },
       );
     });
 
@@ -1024,56 +927,47 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       userId: String(userId),
       payoutId: String(localPayout.clientPayoutId),
       earningIds: JSON.stringify([String(earning._id)]),
-      consignmentId: earning.consignmentId ? String(earning.consignmentId) : "",
-      travelId: earning.travelId ? String(earning.travelId) : "",
+      consignmentId: earning.consignmentId ? String(earning.consignmentId) : '',
+      travelId: earning.travelId ? String(earning.travelId) : '',
     };
 
-    logger.info(
-      "Creating Razorpay payout with notes: " + JSON.stringify(notes)
-    );
+    logger.info('Creating Razorpay payout with notes: ' + JSON.stringify(notes));
 
     // 5. Call Razorpay
     let razorpayResponse;
     try {
-      razorpayResponse = await createPayout(
-        fundAccount.razorpayFundAccountId,
-        amount,
-        {
-          notes,
-          idempotencyKey: localPayout.clientPayoutId.toString(),
-          mode: fundAccount.accountType === "vpa" ? "UPI" : "IMPS",
-        }
-      );
+      razorpayResponse = await createPayout(fundAccount.razorpayFundAccountId, amount, {
+        notes,
+        idempotencyKey: localPayout.clientPayoutId.toString(),
+        mode: fundAccount.accountType === 'vpa' ? 'UPI' : 'IMPS',
+      });
     } catch (err: any) {
-      logger.error(
-        "Razorpay create payout failed:",
-        err.message || JSON.stringify(err)
-      );
+      logger.error('Razorpay create payout failed:', err.message || JSON.stringify(err));
 
       // Mark payout failed and revert earning
       await Payout.findByIdAndUpdate(localPayout._id, {
-        status: "failed",
-        failureReason: err.message || "Razorpay create failed",
+        status: 'failed',
+        failureReason: err.message || 'Razorpay create failed',
       });
 
       await Earning.updateOne(
         { _id: earning._id },
         {
-          $unset: { payoutPending: true, payoutId: "" },
+          $unset: { payoutPending: true, payoutId: '' },
           $set: { is_withdrawn: false },
-        }
+        },
       );
 
       return res
         .status(CODES.INTERNAL_SERVER_ERROR)
-        .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Payout failed"));
+        .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Payout failed'));
     }
 
     // 6. Update local payout with Razorpay ID
     await Payout.findByIdAndUpdate(localPayout._id, {
       $set: {
         razorpayPayoutId: razorpayResponse?.id,
-        status: "processing",
+        status: 'processing',
         notes,
       },
     });
@@ -1084,34 +978,78 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       travelId: earning.travelId,
       consignmentId: earning.consignmentId,
       amount,
-      status: "pending",
-      type: "traveller_earning",
+      status: 'pending',
+      type: 'traveller_earning',
       razorpayPaymentId: razorpayResponse?.id,
     });
 
-    logger.info("Withdraw request created successfully for userId:" + userId);
+    logger.info('Withdraw request created successfully for userId:' + userId);
 
     return res.status(CODES.CREATED).json(
       sendResponse(CODES.CREATED, {
         payout: {
           id: localPayout._id,
           razorpayPayoutId: razorpayResponse?.id,
-          status: "processing",
+          status: 'processing',
         },
         payment,
-      })
+      }),
     );
   } catch (error) {
-    logger.error("Error withdrawing funds: " + error);
+    logger.error('Error withdrawing funds: ' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
-      .json(
-        sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
-      );
+      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Something went wrong'));
   } finally {
     session.endSession();
   }
 };
+
+// export const getUserEarnings = async (req: AuthRequest, res: Response) => {
+//   try {
+//     const userId = req.user;
+//     if (!userId) {
+//       return res
+//         .status(CODES.UNAUTHORIZED)
+//         .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+//     }
+
+//     const earnings = await Earning.find({
+//       userId,
+//       status: "completed", // Only delivered consignments
+//       is_withdrawn: false,
+//       payoutId: { $exists: false }, //Exclude processing payouts
+//     })
+//       .populate("consignmentId", "description fromAddress toAddress")
+//       .populate("travelId", "fromAddress toAddress modeOfTravel")
+//       .sort({ createdAt: -1 })
+//       .lean();
+
+//     const totalEarnings = earnings.reduce(
+//       (sum, earning) => sum + (earning.amount || 0),
+//       0
+//     );
+
+//     return res.json(
+//       sendResponse(CODES.OK, {
+//         totalEarnings,
+//         availableForWithdrawal: totalEarnings,
+//         earnings,
+//       })
+//     );
+//   } catch (error) {
+//     logger.error("❌ Error fetching user earnings:" + error);
+//     return res
+//       .status(CODES.INTERNAL_SERVER_ERROR)
+//       .json(
+//         sendResponse(
+//           CODES.INTERNAL_SERVER_ERROR,
+//           null,
+//           "Internal server error while fetching earnings"
+//         )
+//       );
+//   }
+// };
 
 export const getUserEarnings = async (req: AuthRequest, res: Response) => {
   try {
@@ -1119,42 +1057,58 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
     if (!userId) {
       return res
         .status(CODES.UNAUTHORIZED)
-        .json(sendResponse(CODES.UNAUTHORIZED, null, "Unauthorized"));
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
-    const earnings = await Earning.find({
+    // Fetch ALL earnings (including withdrawn)
+    const allEarnings = await Earning.find({
       userId,
-      status: "completed", // Only delivered consignments
-      is_withdrawn: false,
-      payoutId: { $exists: false }, //Exclude processing payouts
+      status: 'completed',
     })
-      .populate("consignmentId", "description fromAddress toAddress")
-      .populate("travelId", "fromAddress toAddress modeOfTravel")
+      .populate('consignmentId', 'description fromAddress toAddress')
+      .populate('travelId', 'fromAddress toAddress modeOfTravel')
+      .populate({
+        path: 'payoutId',
+        select: 'razorpayPayoutId status amount createdAt',
+      })
       .sort({ createdAt: -1 })
       .lean();
 
-    const totalEarnings = earnings.reduce(
+    // Calculate available for withdrawal (not withdrawn, no pending payout)
+    const availableEarnings = allEarnings.filter(e => !e.is_withdrawn && !e.payoutId);
+    const availableForWithdrawal = availableEarnings.reduce(
       (sum, earning) => sum + (earning.amount || 0),
-      0
+      0,
     );
+
+    // Calculate total lifetime earnings
+    const totalEarnings = allEarnings.reduce((sum, earning) => sum + (earning.amount || 0), 0);
+
+    // Calculate today's earnings (not withdrawn)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todaysEarnings = allEarnings
+      .filter(e => !e.is_withdrawn && new Date(e.createdAt || '') >= today)
+      .reduce((sum, earning) => sum + (earning.amount || 0), 0);
 
     return res.json(
       sendResponse(CODES.OK, {
         totalEarnings,
-        availableForWithdrawal: totalEarnings,
-        earnings,
-      })
+        todaysEarnings,
+        availableForWithdrawal,
+        earnings: allEarnings, // Return all earnings
+      }),
     );
   } catch (error) {
-    logger.error("❌ Error fetching user earnings:" + error);
+    logger.error('❌ Error fetching user earnings:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(
         sendResponse(
           CODES.INTERNAL_SERVER_ERROR,
           null,
-          "Internal server error while fetching earnings"
-        )
+          'Internal server error while fetching earnings',
+        ),
       );
   }
 };

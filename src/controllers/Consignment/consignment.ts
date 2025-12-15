@@ -1,31 +1,28 @@
-import type { Response } from "express";
+import type { Response } from 'express';
 
-import { Types } from "mongoose";
-import type { AuthRequest } from "../../middlewares/authMiddleware";
-import ConsignmentModel from "../../models/consignment.model";
+import { Types } from 'mongoose';
+import type { AuthRequest } from '../../middlewares/authMiddleware';
+import ConsignmentModel from '../../models/consignment.model';
 
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-import { getDateRange } from "../../lib/dateUtils";
-import logger from "../../lib/logger";
-import {
-  calculateFlightFare,
-  calculateTrainFare,
-} from "../../lib/pricingLogic";
+import { getDateRange } from '../../lib/dateUtils';
+import logger from '../../lib/logger';
+import { calculateFlightFare, calculateTrainFare } from '../../lib/pricingLogic';
 import {
   calculateSenderPay,
   calculateTravellerEarning,
   calculateVolumetricWeight,
   formatCoordinates,
-} from "../../lib/utils";
-import { Address } from "../../models/address.model";
-import { CarryRequest } from "../../models/carryRequest.model";
-import Earning from "../../models/earning.model";
-import Notification from "../../models/notification.model";
-import { TravelModel } from "../../models/travel.model";
-import TravelConsignments from "../../models/travelconsignments.model";
-import { User } from "../../models/user.model";
-import { getDistance } from "../../services/maps.service";
+} from '../../lib/utils';
+import { Address } from '../../models/address.model';
+import { CarryRequest } from '../../models/carryRequest.model';
+import Earning from '../../models/earning.model';
+import Notification from '../../models/notification.model';
+import { TravelModel } from '../../models/travel.model';
+import TravelConsignments from '../../models/travelconsignments.model';
+import { User } from '../../models/user.model';
+import { getDistance } from '../../services/maps.service';
 import {
   emitCarryRequestAccepted,
   emitCarryRequestRejected,
@@ -33,12 +30,20 @@ import {
   emitConsignmentCollected,
   emitConsignmentDelivered,
   emitPaymentRequest,
-} from "../../socket/events";
-import { notificationHelper } from "../Notifications/notification";
+} from '../../socket/events';
+import { notificationHelper } from '../Notifications/notification';
+import { removeLocation } from '../../socket/locationStore';
+import {
+  removeTrackingMeta,
+  saveTrackingMeta,
+  trackingPendingUpdates,
+  trackingThrottleStore,
+  trackingTimers,
+} from '../../socket/trackingStore';
 
 // helper type for GeoJSON coords
 interface GeoPoint {
-  type: "Point";
+  type: 'Point';
   coordinates: [number, number];
 }
 
@@ -98,13 +103,19 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       images,
     } = req.body;
 
-    console.log("REQ BODY OF CREATE CONSIGNMENT => ", {
+    // logger.info('REACHED HERE.... 1');
+
+    const normalizedSendingDate = new Date(`${sendingDate}T00:00:00`);
+
+    // logger.info('REACHED HERE.... 2');
+
+    console.log('REQ BODY OF CREATE CONSIGNMENT => ', {
       fromAddressId,
       toAddressId,
       weight,
       weightUnit,
       dimensions,
-      sendingDate,
+      sendingDate: normalizedSendingDate,
       receiverName,
       receiverPhone,
       category,
@@ -115,28 +126,33 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
     });
 
     if (!senderId) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });
     }
+    // logger.info('REACHED HERE.... 2');
 
     if (!fromAddressId || !toAddressId) {
-      return res
-        .status(400)
-        .json({ message: "Both fromAddressId and toAddressId are required" });
+      return res.status(400).json({ message: 'Both fromAddressId and toAddressId are required' });
     }
+
+    // logger.info('REACHED HERE.... 3');
 
     if (
       !mongoose.Types.ObjectId.isValid(fromAddressId) ||
       !mongoose.Types.ObjectId.isValid(toAddressId)
     ) {
-      return res.status(400).json({ message: "Invalid address format" });
+      return res.status(400).json({ message: 'Invalid address format' });
     }
+
+    // logger.info('REACHED HERE.... 4');
 
     const fromAddressObj = await Address.findById(fromAddressId);
     const toAddressObj = await Address.findById(toAddressId);
 
     if (!fromAddressObj || !toAddressObj) {
-      return res.status(400).json({ message: "Invalid address IDs" });
+      return res.status(400).json({ message: 'Invalid address IDs' });
     }
+
+    // logger.info('REACHED HERE.... 5');
 
     const fromAddress = {
       street: fromAddressObj.street,
@@ -162,37 +178,37 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       dimensions.length,
       dimensions.width,
       dimensions.height,
-      dimensions.unit || "cm"
+      dimensions.unit || 'cm',
     );
 
-    console.log("volumetricWeight:", volumetricWeight);
-    console.log("dimensions:", dimensions);
+    // logger.info('REACHED HERE.... 6');
+
+    console.log('volumetricWeight:', volumetricWeight);
+    console.log('dimensions:', dimensions);
 
     const weightInKg = Math.max(weight, volumetricWeight);
 
-    console.log("Weight in Kg:", weightInKg);
+    console.log('Weight in Kg:', weightInKg);
 
     if (weightInKg <= 0) {
-      return res.status(400).json({ message: "Invalid weight" });
+      return res.status(400).json({ message: 'Invalid weight' });
     }
 
-    console.log("Calculating distance between cities");
-    console.log("From City:", fromAddressObj.city);
-    console.log("To City:", toAddressObj.city);
+    // logger.info('REACHED HERE.... 7');
+
+    console.log('Calculating distance between cities');
+    console.log('From City:', fromAddressObj.city);
+    console.log('To City:', toAddressObj.city);
 
     const distance = await getDistance(fromAddressObj.city, toAddressObj.city);
-    console.log("Distance:", distance?.distance ? distance.distance : 0);
+    console.log('Distance:', distance?.distance ? distance.distance : 0);
 
-    const trainPricing = await calculateTrainFare(
-      weightInKg,
-      distance?.distanceValue || 0
-    );
+    const trainPricing = await calculateTrainFare(weightInKg, distance?.distanceValue || 0);
 
-    const flightPricing = await calculateFlightFare(
-      weightInKg,
-      distance?.distanceValue || 0
-    );
-    console.log("Flight Pricing:", flightPricing);
+    const flightPricing = await calculateFlightFare(weightInKg, distance?.distanceValue || 0);
+    console.log('Flight Pricing:', flightPricing);
+
+    // logger.info('REACHED HERE.... 4');
 
     const consignment = await ConsignmentModel.create({
       senderId: senderId,
@@ -201,10 +217,10 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       fromCoordinates: fromAddressObj.location,
       toCoordinates: toAddressObj.location,
       weight: weightInKg,
-      distance: distance?.distance || "N/A",
+      distance: distance?.distance || 'N/A',
       weightUnit,
       dimensions,
-      sendingDate,
+      sendingDate: normalizedSendingDate,
       receiverName,
       flightPrice: flightPricing,
       trainPrice: trainPricing,
@@ -215,15 +231,14 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       description,
       handleWithCare,
       images,
-      status: "published",
+      status: 'published',
     });
+    // logger.info('REACHED HERE.... 8 ==> ' + consignment);
 
-    return res
-      .status(201)
-      .json({ message: "Consignment created successfully", consignment });
+    return res.status(201).json({ message: 'Consignment created successfully', consignment });
   } catch (error: any) {
-    console.error("❌ Error creating consignment:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('❌ Error creating consignment:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -231,17 +246,13 @@ export const getConsignments = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });
     }
-    const consignments = await ConsignmentModel.find({ senderId: userId }).sort(
-      { createdAt: -1 }
-    );
-    return res
-      .status(200)
-      .json({ message: "Consignments retrieved successfully", consignments });
+    const consignments = await ConsignmentModel.find({ senderId: userId }).sort({ createdAt: -1 });
+    return res.status(200).json({ message: 'Consignments retrieved successfully', consignments });
   } catch (error) {
-    console.error("❌ Error fetching consignments:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('❌ Error fetching consignments:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -255,18 +266,16 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
     };
 
     if (!fromstate || !tostate || !date) {
-      return res
-        .status(400)
-        .json({ message: "fromstate, tostate and date are required" });
+      return res.status(400).json({ message: 'fromstate, tostate and date are required' });
     }
 
     logger.info(
-      "Inside locateConsignment: = >" +
+      'Inside locateConsignment: = >' +
         {
           fromstate,
           tostate,
           date,
-        }
+        },
     );
 
     // Normalize and tokenize
@@ -279,8 +288,8 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
     const fromTokens = tokenize(fromstate);
     const toTokens = tokenize(tostate);
 
-    const fromRegexes = fromTokens.map((token) => new RegExp(token, "i"));
-    const toRegexes = toTokens.map((token) => new RegExp(token, "i"));
+    const fromRegexes = fromTokens.map(token => new RegExp(token, 'i'));
+    const toRegexes = toTokens.map(token => new RegExp(token, 'i'));
 
     // Parse date using utility
     let startOfDay: Date, endOfDay: Date;
@@ -293,39 +302,39 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
           startOfDay: startOfDay.toISOString(),
           endOfDay: endOfDay.toISOString(),
         },
-        "Parsed date range"
+        'Parsed date range',
       );
     } catch (error) {
       logger.error(`Date parsing error: ${error}`);
       return res.status(400).json({
         message: `Invalid date format: ${date}. Expected DD/MM/YYYY (e.g., 25/11/2025)`,
-        error: error instanceof Error ? error.message : "Date parsing failed",
+        error: error instanceof Error ? error.message : 'Date parsing failed',
       });
     }
 
     logger.info(
-      `🔍 Locating consignments from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()}`
+      `🔍 Locating consignments from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()}`,
     );
 
     const consignments = await ConsignmentModel.find({
       $and: [
         {
           $or: [
-            { "fromAddress.state": { $in: fromRegexes } },
-            { "fromAddress.city": { $in: fromRegexes } },
-            { "fromAddress.street": { $in: fromRegexes } },
+            { 'fromAddress.state': { $in: fromRegexes } },
+            { 'fromAddress.city': { $in: fromRegexes } },
+            { 'fromAddress.street': { $in: fromRegexes } },
           ],
         },
         {
           $or: [
-            { "toAddress.state": { $in: toRegexes } },
-            { "toAddress.city": { $in: toRegexes } },
-            { "toAddress.street": { $in: toRegexes } },
+            { 'toAddress.state': { $in: toRegexes } },
+            { 'toAddress.city': { $in: toRegexes } },
+            { 'toAddress.street': { $in: toRegexes } },
           ],
         },
         {
           sendingDate: { $gte: startOfDay, $lt: endOfDay },
-          status: "published",
+          status: 'published',
           senderId: { $ne: currentUserId },
         },
       ],
@@ -335,51 +344,44 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
       .lean();
 
     if (!consignments || consignments.length === 0) {
-      logger.info(
-        `❌ No consignments found for ${fromstate} → ${tostate} on ${date}`
-      );
+      logger.info(`❌ No consignments found for ${fromstate} → ${tostate} on ${date}`);
       return res.status(404).json({
-        message: "No consignments found for the given route and date",
+        message: 'No consignments found for the given route and date',
         consignments: [],
       });
     }
 
     return res.status(200).json({
-      message: "Consignments fetched successfully",
+      message: 'Consignments fetched successfully',
       consignments,
     });
   } catch (error: any) {
-    logger.error("❌ Error locating consignments:", error);
+    logger.error('❌ Error locating consignments:', error);
     return res.status(500).json({
-      message: "Internal server error while locating consignments",
+      message: 'Internal server error while locating consignments',
       error: error instanceof Error ? error.message : error,
     });
   }
 };
 
-export const locateConsignmentById = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const locateConsignmentById = async (req: AuthRequest, res: Response) => {
   try {
     const consignmentId = req.params.id;
     if (!consignmentId) {
-      return res.status(400).json({ message: "Consignment ID is required" });
+      return res.status(400).json({ message: 'Consignment ID is required' });
     }
     if (!Types.ObjectId.isValid(consignmentId)) {
-      return res.status(400).json({ message: "Invalid consignment ID format" });
+      return res.status(400).json({ message: 'Invalid consignment ID format' });
     }
     const consignment = await ConsignmentModel.findById(consignmentId);
     if (!consignment) {
-      return res.status(404).json({ message: "No consignment found" });
+      return res.status(404).json({ message: 'No consignment found' });
     }
-    return res
-      .status(200)
-      .json({ message: "Consignment fetched successfully", consignment });
+    return res.status(200).json({ message: 'Consignment fetched successfully', consignment });
   } catch (error) {
-    console.error("❌ Error fetching consignment by ID:", error);
+    console.error('❌ Error fetching consignment by ID:', error);
     return res.status(500).json({
-      message: "Internal server error while fetching consignment by ID",
+      message: 'Internal server error while fetching consignment by ID',
     });
   }
 };
@@ -390,39 +392,42 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
     const userId = req.user;
 
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: Missing user" });
+      return res.status(401).json({ message: 'Unauthorized: Missing user' });
     }
 
     if (!requestId) {
-      return res.status(400).json({ message: "Missing requestId" });
+      return res.status(400).json({ message: 'Missing requestId' });
     }
+
+    console.log('REQUESTID =>', JSON.stringify(requestId, null, 2));
+    console.log(typeof requestId);
 
     const carryRequest = await CarryRequest.findById(requestId)
       .populate({
-        path: "travellerId",
+        path: 'travellerId',
         model: User,
-        select: "firstName lastName profilePicture rating reviewCount email",
+        select: 'firstName lastName profilePicture rating reviewCount email',
       })
       .populate({
-        path: "requestedBy",
+        path: 'requestedBy',
         model: User,
-        select: "firstName lastName profilePicture email",
+        select: 'firstName lastName profilePicture email',
       })
       .populate({
-        path: "consignmentId",
+        path: 'consignmentId',
         model: ConsignmentModel,
         select:
-          "fromAddress toAddress fromCoordinates toCoordinates distance weight weightUnit description category subCategory images senderId",
+          'fromAddress toAddress fromCoordinates toCoordinates distance weight weightUnit description category subCategory images senderId',
         populate: {
-          path: "senderId",
+          path: 'senderId',
           model: User,
-          select: "firstName lastName profilePicture email phoneNumber",
+          select: 'firstName lastName profilePicture email phoneNumber',
         },
       })
       .lean();
 
     if (!carryRequest) {
-      return res.status(404).json({ message: "Carry request not found" });
+      return res.status(404).json({ message: 'Carry request not found' });
     }
 
     // const formatCoordinates = (coords?: GeoPoint) => {
@@ -434,18 +439,14 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
     // };
 
     function isPopulatedConsignment(obj: unknown): obj is PopulatedConsignment {
-      return !!obj && typeof obj === "object" && "fromAddress" in obj;
+      return !!obj && typeof obj === 'object' && 'fromAddress' in obj;
     }
 
     const consignment = isPopulatedConsignment(carryRequest.consignmentId)
       ? {
           ...carryRequest.consignmentId,
-          fromCoordinates: formatCoordinates(
-            carryRequest.consignmentId.fromCoordinates
-          ),
-          toCoordinates: formatCoordinates(
-            carryRequest.consignmentId.toCoordinates
-          ),
+          fromCoordinates: formatCoordinates(carryRequest.consignmentId.fromCoordinates),
+          toCoordinates: formatCoordinates(carryRequest.consignmentId.toCoordinates),
         }
       : null;
 
@@ -453,7 +454,7 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
     const relatedTravelDoc = carryRequest.travelId
       ? await TravelModel.findById(carryRequest.travelId)
           .select(
-            "fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate vehicleNumber durationOfStay durationOfTravel status modeOfTravel vehicleType travelDate availableWeight description"
+            'fromAddress toAddress fromCoordinates toCoordinates expectedStartDate expectedEndDate vehicleNumber durationOfStay durationOfTravel status modeOfTravel vehicleType travelDate availableWeight description',
           )
           .lean()
       : null;
@@ -479,18 +480,16 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
       relatedTravel,
     };
 
-    logger.info(
-      `📦 Carry request fetched by ID ${requestId} for user ${userId}`
-    );
+    logger.info(`📦 Carry request fetched by ID ${requestId} for user ${userId}`);
 
     return res.status(200).json({
-      message: "Carry request fetched successfully",
+      message: 'Carry request fetched successfully',
       carryRequest: formattedCarryRequest,
     });
   } catch (error: any) {
-    logger.error("❌ Error fetching carry request by ID:", error);
+    logger.error('❌ Error fetching carry request by ID:', error);
     return res.status(500).json({
-      message: "Internal server error while fetching carry request",
+      message: 'Internal server error while fetching carry request',
       error: error instanceof Error ? error.message : error,
     });
   }
@@ -501,40 +500,35 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
     const { consignmentId, travelId } = req.body;
 
     if (!consignmentId || !travelId) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
     const consignment = await ConsignmentModel.findById(consignmentId);
 
     if (!consignment) {
-      return res.status(404).json({ message: "No consignment found" });
+      return res.status(404).json({ message: 'No consignment found' });
     }
-    console.log("Consignment:", consignment);
+    console.log('Consignment:', consignment);
 
     const consignmentSender = consignment?.senderId;
 
     const travel = await TravelModel.findById(travelId);
 
     if (!travel) {
-      return res.status(404).json({ message: "No travel found" });
+      return res.status(404).json({ message: 'No travel found' });
     }
 
     if (
       travel.fromAddress.state !== consignment.fromAddress.state ||
       travel.toAddress.state !== consignment.toAddress.state
     ) {
-      return res
-        .status(400)
-        .json({ message: "Travel route does not match consignment route" });
+      return res.status(400).json({ message: 'Travel route does not match consignment route' });
     }
 
     const modelOfTravel = travel.modeOfTravel;
-    console.log("Model of Travel:", modelOfTravel);
+    console.log('Model of Travel:', modelOfTravel);
 
-    const travellerEarning = calculateTravellerEarning(
-      modelOfTravel,
-      consignment
-    );
+    const travellerEarning = calculateTravellerEarning(modelOfTravel, consignment);
 
     const senderPay = calculateSenderPay(modelOfTravel, consignment);
 
@@ -542,13 +536,12 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       consignmentId: consignmentId,
       travellerId: travel.travelerId,
       requestedBy: consignmentSender,
-      status: "pending",
+      status: 'pending',
     });
 
     if (existingRequest) {
       return res.status(400).json({
-        message:
-          "You have already sent a carry request for this consignment and travel",
+        message: 'You have already sent a carry request for this consignment and travel',
       });
     }
 
@@ -556,16 +549,14 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       consignmentId: consignmentId,
       travellerId: travel.travelerId,
       requestedBy: consignmentSender,
-      status: "pending",
+      status: 'pending',
       travelId: travelId,
       senderPayAmount: senderPay,
       travellerEarning: travellerEarning,
     });
 
     if (!carryRequestBySender) {
-      return res
-        .status(500)
-        .json({ message: "Error in creating carry request" });
+      return res.status(500).json({ message: 'Error in creating carry request' });
     }
 
     // SOCKET EMIT: notify consignment owner
@@ -576,23 +567,21 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       travellerId: travel.travelerId.toString(),
       senderPayAmount: senderPay,
       travellerEarning: travellerEarning,
-      status: "pending",
+      status: 'pending',
       consignmentDescription: consignment.description, // optional
       message: `Carry request sent for consignment: ${consignment.description}`, // must add
       createdAt: carryRequestBySender.createdAt,
     });
 
     const notificationData = await notificationHelper(
-      "bySender",
+      'bySender',
       consignment,
-      "travel",
-      consignmentSender
+      'travel',
+      consignmentSender,
     );
 
     if (!notificationData) {
-      return res
-        .status(500)
-        .json({ message: "Failed to generate notification data" });
+      return res.status(500).json({ message: 'Failed to generate notification data' });
     }
     const { title, message } = notificationData;
     const notification = await Notification.create({
@@ -605,54 +594,46 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       relatedTravelId: travelId,
     });
     if (!notification) {
-      return res
-        .status(500)
-        .json({ message: "Error in creating notification" });
+      return res.status(500).json({ message: 'Error in creating notification' });
     }
     return res.status(201).json({
-      message: "Carry request sent successfully",
+      message: 'Carry request sent successfully',
       carryRequestBySender,
     });
   } catch (error) {
-    console.error("❌ Error in carry request by sender:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('❌ Error in carry request by sender:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-export const carryRequestByTraveller = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const carryRequestByTraveller = async (req: AuthRequest, res: Response) => {
   try {
     const { consignmentId, travelId } = req.body;
     const travellerId = req.user;
 
     if (!travellerId || !consignmentId || !travelId) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
     const travel = await TravelModel.findById(travelId);
     if (!travel) {
-      return res.status(404).json({ message: "No travel found" });
+      return res.status(404).json({ message: 'No travel found' });
     }
 
     if (travel.travelerId.toString() !== travellerId) {
       return res.status(403).json({
-        message: "You are not authorized to send carry request for this travel",
+        message: 'You are not authorized to send carry request for this travel',
       });
     }
 
     const consignment = await ConsignmentModel.findById(consignmentId);
     if (!consignment) {
-      return res.status(404).json({ message: "No consignment found" });
+      return res.status(404).json({ message: 'No consignment found' });
     }
 
     const consignmentSenderId = consignment?.senderId;
 
-    const travellerEarning = calculateTravellerEarning(
-      travel.modeOfTravel,
-      consignment
-    );
+    const travellerEarning = calculateTravellerEarning(travel.modeOfTravel, consignment);
 
     const senderPay = calculateSenderPay(travel.modeOfTravel, consignment);
 
@@ -660,12 +641,11 @@ export const carryRequestByTraveller = async (
       consignmentId: consignmentId,
       travellerId: travellerId,
       requestedBy: consignmentSenderId, // Fixed here
-      status: "pending",
+      status: 'pending',
     });
     if (existingRequest) {
       return res.status(400).json({
-        message:
-          "You have already sent a carry request for this consignment and travel",
+        message: 'You have already sent a carry request for this consignment and travel',
       });
     }
 
@@ -674,15 +654,13 @@ export const carryRequestByTraveller = async (
       travellerId: travellerId,
       requestedBy: consignmentSenderId,
       travelId: travelId,
-      status: "pending",
+      status: 'pending',
       senderPayAmount: senderPay,
       travellerEarning: travellerEarning,
     });
 
     if (!carryRequestByTraveller) {
-      return res
-        .status(500)
-        .json({ message: "Error in creating carry request" });
+      return res.status(500).json({ message: 'Error in creating carry request' });
     }
 
     // EMIT socket event
@@ -693,23 +671,21 @@ export const carryRequestByTraveller = async (
       travellerId,
       senderPayAmount: senderPay,
       travellerEarning,
-      status: "pending",
+      status: 'pending',
       consignmentDescription: consignment.description,
       message: `Carry request sent for consignment: ${consignment.description}`,
       createdAt: carryRequestByTraveller.createdAt,
     });
 
     const notificationData = await notificationHelper(
-      "byTraveller",
+      'byTraveller',
       consignment,
-      "consignment",
-      travellerId
+      'consignment',
+      travellerId,
     );
 
     if (!notificationData) {
-      return res
-        .status(500)
-        .json({ message: "Failed to generate notification data" });
+      return res.status(500).json({ message: 'Failed to generate notification data' });
     }
 
     const { title, message } = notificationData;
@@ -726,20 +702,18 @@ export const carryRequestByTraveller = async (
     console.log(notification);
 
     if (!notification) {
-      return res
-        .status(500)
-        .json({ message: "Error in creating notification" });
+      return res.status(500).json({ message: 'Error in creating notification' });
     }
 
-    console.log("CarryRequestByTraveller: ", carryRequestByTraveller);
+    console.log('CarryRequestByTraveller: ', carryRequestByTraveller);
 
     return res.status(201).json({
-      message: "Carry request sent successfully",
+      message: 'Carry request sent successfully',
       carryRequestByTraveller,
     });
   } catch (error) {
-    console.error("❌ Error in carry request by traveller:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('❌ Error in carry request by traveller:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -874,54 +848,54 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
 
     const userId = req.user;
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });
     }
 
     const { carryRequestId, travelId } = req.body;
     if (!carryRequestId) {
-      return res.status(400).json({ message: "carryRequestId is required" });
+      return res.status(400).json({ message: 'carryRequestId is required' });
     }
 
     const carryRequest = await CarryRequest.findOne({
       _id: carryRequestId,
-      status: "pending",
+      status: 'pending',
     }).session(session);
 
     if (!carryRequest) {
       await session.abortTransaction();
       return res.status(404).json({
-        message: "Carry request not found or already processed",
+        message: 'Carry request not found or already processed',
       });
     }
 
-    const consignment = await ConsignmentModel.findById(
-      carryRequest.consignmentId
-    ).session(session);
+    const consignment = await ConsignmentModel.findById(carryRequest.consignmentId).session(
+      session,
+    );
 
     if (!consignment) {
       await session.abortTransaction();
-      return res.status(404).json({ message: "No consignment found" });
+      return res.status(404).json({ message: 'No consignment found' });
     }
 
     // 🚨 CRITICAL: Determine who should accept based on who the request is FOR
     // After fix: requestedBy is ALWAYS the consignment sender (who will pay)
     // So we need to check: is this sender accepting traveller's request, or traveller accepting sender's request?
 
-    const isSenderAccepting =
-      userId.toString() === consignment.senderId.toString();
-    const isTravellerAccepting =
-      userId.toString() === carryRequest.travellerId.toString();
+    const uid = typeof userId === 'string' ? userId : userId._id;
+
+    const isSenderAccepting = uid === consignment.senderId.toString();
+    const isTravellerAccepting = uid === carryRequest.travellerId.toString();
 
     // Neither sender nor traveller? Not allowed
     if (!isSenderAccepting && !isTravellerAccepting) {
       await session.abortTransaction();
       return res.status(403).json({
-        message: "You are not authorized to accept this request",
+        message: 'You are not authorized to accept this request',
       });
     }
 
     // Update status
-    carryRequest.status = "accepted_pending_payment";
+    carryRequest.status = 'accepted_pending_payment';
     await carryRequest.save({ session });
 
     // Notify the OTHER party (not the acceptor)
@@ -934,7 +908,7 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
       consignmentId: carryRequest.consignmentId.toString(),
       travellerId: carryRequest.travellerId.toString(),
       requestedBy: carryRequest.requestedBy.toString(),
-      status: "accepted_pending_payment",
+      status: 'accepted_pending_payment',
       senderPayAmount: carryRequest.senderPayAmount,
       travellerEarning: carryRequest.travellerEarning,
     });
@@ -943,24 +917,44 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
     const sender = await User.findById(consignment.senderId).session(session);
     if (!sender) {
       await session.abortTransaction();
-      return res.status(404).json({ message: "Sender not found" });
+      return res.status(404).json({ message: 'Sender not found' });
     }
 
-    // Create notification for sender to initiate payment
-    const notificationData = await Notification.create(
-      [
-        {
-          userId: sender._id,
-          title: "Carry Request Accepted",
-          message: `Your carry request for consignment "${consignment.description}" has been accepted. Please proceed to payment.`,
-          isRead: false,
-          relatedConsignmentId: consignment._id,
-          requestId: carryRequest._id,
-          relatedTravelId: travelId,
-        },
-      ],
-      { session }
+    // // Create notification for sender to initiate payment
+    // const notificationData = await Notification.create(
+    //   [
+    //     {
+    //       userId: sender._id,
+    //       title: 'Request Accepted',
+    //       message: `Carry request of your consignment "${consignment.description}" has been accepted by ${name}. Please proceed to payment.`,
+    //       isRead: false,
+    //       relatedConsignmentId: consignment._id,
+    //       requestId: carryRequest._id,
+    //       relatedTravelId: travelId,
+    //     },
+    //   ],
+    //   { session },
+    // );
+
+    const notificationData = await notificationHelper(
+      'carryRequestAccepted',
+      consignment,
+      'consignment',
+      consignment.senderId, // receiver (sender)
+      typeof userId === 'string' // acceptor
+        ? userId
+        : userId._id,
     );
+
+    await Notification.create({
+      userId: consignment.senderId, // always notify sender to pay
+      title: notificationData.title,
+      message: notificationData.message,
+      isRead: false,
+      relatedConsignmentId: consignment._id,
+      requestId: carryRequest._id,
+      relatedTravelId: travelId,
+    });
 
     await emitPaymentRequest((sender._id as Types.ObjectId).toString(), {
       consignmentId: consignment._id.toString(),
@@ -973,14 +967,14 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
     await session.commitTransaction();
 
     return res.status(200).json({
-      message: "Carry request accepted, pending payment",
+      message: 'Carry request accepted, pending payment',
       carryRequest,
       notification: notificationData,
     });
   } catch (error: any) {
     await session.abortTransaction();
-    console.error("Error in acceptCarryRequest:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('Error in acceptCarryRequest:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   } finally {
     session.endSession();
   }
@@ -991,60 +985,73 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
     const userId = req.user;
 
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: Missing user" });
+      return res.status(401).json({ message: 'Unauthorized: Missing user' });
     }
 
     const { carryRequestId } = req.body;
     if (!carryRequestId) {
-      return res.status(400).json({ message: "carryRequestId is required" });
+      return res.status(400).json({ message: 'carryRequestId is required' });
     }
 
     const carryRequest = await CarryRequest.findById(carryRequestId);
 
     if (!carryRequest) {
-      return res.status(404).json({ message: "No carry request found" });
+      return res.status(404).json({ message: 'No carry request found' });
     }
 
-    const consignment = await ConsignmentModel.findById(
-      carryRequest.consignmentId
-    ).select("senderId");
+    const consignment = await ConsignmentModel.findById(carryRequest.consignmentId).select(
+      'senderId',
+    );
     if (!consignment) {
-      return res.status(404).json({ message: "Consignment not found" });
+      return res.status(404).json({ message: 'Consignment not found' });
     }
 
     if (!consignment) {
-      return res.status(404).json({ message: "No consignment found" });
+      return res.status(404).json({ message: 'No consignment found' });
     }
 
     // Determine who is rejecting
-    const isTravellerRejecting =
-      carryRequest.travellerId.toString() === userId.toString();
-    const isSenderRejecting =
-      consignment.senderId.toString() === userId.toString();
+    const isTravellerRejecting = carryRequest.travellerId.toString() === userId.toString();
+    const isSenderRejecting = consignment.senderId.toString() === userId.toString();
 
     if (!isTravellerRejecting && !isSenderRejecting) {
       return res.status(403).json({
-        message: "You are not authorized to reject this request",
+        message: 'You are not authorized to reject this request',
       });
     }
 
-    carryRequest.status = "rejected";
+    carryRequest.status = 'rejected';
     await carryRequest.save();
 
     // Fetch user names
     const travellerUser = await User.findById(carryRequest.travellerId).select(
-      "firstName lastName"
+      'firstName lastName',
     );
-    const senderUser = await User.findById(carryRequest.requestedBy).select(
-      "firstName lastName"
-    );
+    const senderUser = await User.findById(carryRequest.requestedBy).select('firstName lastName');
 
     const travellerName = travellerUser
       ? `${travellerUser.firstName} ${travellerUser.lastName}`
-      : "Unknown traveller";
+      : 'Unknown traveller';
     const senderName = senderUser
       ? `${senderUser.firstName} ${senderUser.lastName}`
-      : "Unknown sender";
+      : 'Unknown sender';
+
+    // ✅ FIXED: Only notify the OTHER party (not the one who rejected)
+    const targetUserId = isTravellerRejecting
+      ? carryRequest.requestedBy.toString()
+      : carryRequest.travellerId.toString();
+
+    const rejectorName = isTravellerRejecting ? travellerName : senderName;
+
+    await Notification.create({
+      userId: targetUserId,
+      title: 'Carry request update',
+      message: `${rejectorName} has rejected your carry request`,
+      typeOfNotif: 'consignment',
+      relatedConsignmentId: carryRequest.consignmentId,
+      requestId: carryRequest._id,
+      isRead: false,
+    });
 
     // Construct payload for socket
     const payload = {
@@ -1054,53 +1061,26 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       requestedBy: carryRequest.requestedBy.toString(),
       travellerName,
       rejectedById: userId.toString(),
-      rejectedByName: isTravellerRejecting ? travellerName : senderName, // FIXED
-      status: "rejected" as const,
+      rejectedByName: rejectorName, // FIXED
+      status: 'rejected' as const,
       senderPayAmount: carryRequest.senderPayAmount,
       travellerEarning: carryRequest.travellerEarning,
     };
 
-    // Notification for the **other party**
-    const targetUserId = isTravellerRejecting
-      ? carryRequest.requestedBy.toString()
-      : carryRequest.travellerId.toString();
-
-    await Notification.create({
-      userId: targetUserId,
-      title: "Carry request update",
-      message: `${
-        isTravellerRejecting ? travellerName : senderName
-      } has rejected your carry request`,
-      typeOfNotif: "consignment",
-      relatedConsignmentId: carryRequest.consignmentId,
-      requestId: carryRequest._id,
-      isRead: false,
-    });
-
-    // Emit to both parties
-    await emitCarryRequestRejected(
-      carryRequest.travellerId.toString(),
-      payload
-    );
-    await emitCarryRequestRejected(
-      carryRequest.requestedBy.toString(),
-      payload
-    );
+    // ✅ FIXED: Emit only to the OTHER party
+    await emitCarryRequestRejected(targetUserId, payload);
 
     return res.status(200).json({
-      message: "Carry request rejected successfully",
+      message: 'Carry request rejected successfully',
       carryRequest,
     });
   } catch (error) {
-    console.error("❌ Error in rejecting carry request:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('❌ Error in rejecting carry request:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-export const updateTravelConsignmentStatus = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const updateTravelConsignmentStatus = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
 
   try {
@@ -1108,60 +1088,77 @@ export const updateTravelConsignmentStatus = async (
     const { travelConsignmentId } = req.params;
     const { newStatus, otp } = req.body;
 
-    const travelConsignment = await TravelConsignments.findById(
-      travelConsignmentId
-    ).session(session);
+    const travelConsignment = await TravelConsignments.findById(travelConsignmentId).session(
+      session,
+    );
     if (!travelConsignment) {
-      return res.status(404).json({ message: "No travel consignment found" });
+      return res.status(404).json({ message: 'No travel consignment found' });
     }
 
-    const consignment = await ConsignmentModel.findById(
-      travelConsignment.consignmentId
-    ).session(session);
+    const consignment = await ConsignmentModel.findById(travelConsignment.consignmentId).session(
+      session,
+    );
     if (!consignment) {
-      return res.status(404).json({ message: "No consignment found" });
+      return res.status(404).json({ message: 'No consignment found' });
     }
 
     const carryRequest = await CarryRequest.findOne({
       consignmentId: travelConsignment.consignmentId,
       travelId: travelConsignment.travelId,
-      status: { $in: ["accepted"] },
+      status: { $in: ['accepted'] },
     }).session(session);
 
     if (!carryRequest) {
-      return res.status(404).json({ message: "Carry request not found" });
+      return res.status(404).json({ message: 'Carry request not found' });
     }
 
     // Fetch Travel to check if travel has started
     const travel = await TravelModel.findById(travelConsignment.travelId);
     if (!travel) {
       await session.abortTransaction();
-      return res.status(404).json({ message: "Associated travel not found" });
+      return res.status(404).json({ message: 'Associated travel not found' });
     }
 
-    if (travel.status !== "ongoing") {
-      return res
-        .status(400)
-        .json({ message: "Cannot update consignment before travel starts" });
+    if (travel.status !== 'ongoing') {
+      return res.status(400).json({ message: 'Cannot update consignment before travel starts' });
     }
 
     // In transit flow
-    if (newStatus === "in_transit") {
-      if (travelConsignment.status !== "to_handover") {
-        return res.status(400).json({ message: "Invalid status transition" });
+    if (newStatus === 'in_transit') {
+      if (travelConsignment.status !== 'to_handover') {
+        return res.status(400).json({ message: 'Invalid status transition' });
       }
 
       const isVerified = otp === travelConsignment.senderOTP;
       if (!isVerified) {
-        return res.status(400).json({ message: "Invalid OTP" });
+        return res.status(400).json({ message: 'Invalid OTP' });
       }
 
-      travelConsignment.status = "in_transit";
-      consignment.status = "in-transit";
+      travelConsignment.status = 'in_transit';
+      consignment.status = 'in-transit';
       travelConsignment.pickupTime = new Date();
 
       await travelConsignment.save({ session });
       await consignment.save({ session });
+
+      // --------------------------------------
+      // NEW CODE: Initialize tracking metadata
+      // --------------------------------------
+      const travellerId = travel.travelerId.toString();
+      const senderId = consignment.senderId.toString();
+
+      // Store mapping for fast lookups during location:emit
+      saveTrackingMeta(travelConsignment._id.toString(), {
+        travellerId,
+        senderId,
+      });
+
+      // Optional but recommended: reset old location (if any)
+      removeLocation(travelConsignment._id.toString());
+
+      logger.info(
+        `[Tracking] Started tracking for ${travelConsignment._id} (traveller=${travellerId}, sender=${senderId})`,
+      );
 
       const earning = await Earning.create(
         [
@@ -1170,24 +1167,22 @@ export const updateTravelConsignmentStatus = async (
             travelId: travelConsignment.travelId,
             consignmentId: travelConsignment.consignmentId,
             amount: travelConsignment.travellerEarning,
-            status: "pending",
+            status: 'pending',
             is_withdrawn: false,
           },
         ],
-        { session }
+        { session },
       );
 
       if (!earning) {
-        return res
-          .status(500)
-          .json({ message: "Error in creating earning record" });
+        return res.status(500).json({ message: 'Error in creating earning record' });
       }
 
       const notifSender = await notificationHelper(
-        "consignmentCollected",
+        'consignmentCollected',
         consignment,
-        "consignment",
-        carryRequest.travellerId
+        'consignment',
+        carryRequest.travellerId,
       );
       await Notification.create(
         [
@@ -1198,7 +1193,7 @@ export const updateTravelConsignmentStatus = async (
             relatedTravelId: travelConsignment.travelId,
           },
         ],
-        { session }
+        { session },
       );
 
       // EMIT socket event
@@ -1207,11 +1202,11 @@ export const updateTravelConsignmentStatus = async (
         travelConsignmentId: travelConsignment._id.toString(),
         consignmentId: consignment._id.toString(),
         travelId: travelConsignment.travelId.toString(),
-        status: "in_transit",
+        status: 'in_transit',
         pickupTime: travelConsignment.pickupTime.toISOString(),
         travellerEarning: travelConsignment.travellerEarning,
         senderToPay: travelConsignment.senderToPay,
-        message: "Consignment picked up and now in transit.",
+        message: 'Consignment picked up and now in transit.',
       });
 
       // Notify traveller
@@ -1219,56 +1214,78 @@ export const updateTravelConsignmentStatus = async (
         travelConsignmentId: travelConsignment._id.toString(),
         consignmentId: consignment._id.toString(),
         travelId: travelConsignment.travelId.toString(),
-        status: "in_transit",
+        status: 'in_transit',
         pickupTime: travelConsignment.pickupTime.toISOString(),
         travellerEarning: travelConsignment.travellerEarning,
         senderToPay: travelConsignment.senderToPay,
-        message: "Pickup confirmed! Consignment in transit.",
+        message: 'Pickup confirmed! Consignment in transit.',
       });
 
       await session.commitTransaction();
       session.endSession();
 
       return res.status(200).json({
-        message: "Status updated to in_transit and earning record created",
+        message: 'Status updated to in_transit and earning record created',
         travelConsignment,
         earning,
       });
 
       // Delivered flow
-    } else if (newStatus === "delivered") {
-      if (travelConsignment.status !== "in_transit") {
-        return res.status(400).json({ message: "Invalid status transition" });
+    } else if (newStatus === 'delivered') {
+      if (travelConsignment.status !== 'in_transit') {
+        return res.status(400).json({ message: 'Invalid status transition' });
       }
 
       const isVerified = otp === travelConsignment.receiverOTP;
       if (!isVerified) {
-        return res.status(400).json({ message: "Invalid OTP" });
+        return res.status(400).json({ message: 'Invalid OTP' });
       }
 
-      travelConsignment.status = "delivered";
-      consignment.status = "delivered";
+      travelConsignment.status = 'delivered';
+      consignment.status = 'delivered';
       travelConsignment.deliveryTime = new Date();
 
       await travelConsignment.save({ session });
       await consignment.save({ session });
+
+      // --------------------------------------
+      // NEW CODE: Clean up tracking session
+      // --------------------------------------
+      const consignmentId = travelConsignment._id.toString();
+
+      // remove metadata
+      removeTrackingMeta(consignmentId);
+
+      // remove last known location
+      removeLocation(consignmentId);
+
+      // clear throttling objects
+      trackingThrottleStore.delete(consignmentId);
+      trackingPendingUpdates.delete(consignmentId);
+
+      // clear pending throttle timer
+      const timer = trackingTimers.get(consignmentId);
+      if (timer) clearTimeout(timer);
+      trackingTimers.delete(consignmentId);
+
+      logger.info(`[Tracking] Cleaned up tracking for ${consignmentId}`);
 
       // ✅ Update earning to completed
       await Earning.findOneAndUpdate(
         {
           userId: carryRequest.travellerId,
           consignmentId: consignment._id,
-          status: "pending",
+          status: 'pending',
         },
-        { status: "completed" },
-        { session }
+        { status: 'completed' },
+        { session },
       );
 
       const notifSender = await notificationHelper(
-        "consignmentDelivered",
+        'consignmentDelivered',
         consignment,
-        "consignment",
-        carryRequest.travellerId
+        'consignment',
+        carryRequest.travellerId,
       );
       await Notification.create(
         [
@@ -1279,7 +1296,7 @@ export const updateTravelConsignmentStatus = async (
             relatedTravelId: travelConsignment.travelId,
           },
         ],
-        { session }
+        { session },
       );
 
       // EMIT socket event
@@ -1289,10 +1306,9 @@ export const updateTravelConsignmentStatus = async (
         travelConsignmentId: travelConsignment._id.toString(),
         consignmentId: consignment._id.toString(),
         travelId: travelConsignment.travelId.toString(),
-        status: "delivered",
+        status: 'delivered',
         deliveryTime: travelConsignment.deliveryTime.toISOString(),
-        message:
-          "Delivered successfully! Consignment has been delivered successfully.",
+        message: 'Delivered successfully! Consignment has been delivered successfully.',
       });
 
       // Notify traveller
@@ -1300,24 +1316,22 @@ export const updateTravelConsignmentStatus = async (
         travelConsignmentId: travelConsignment._id.toString(),
         consignmentId: consignment._id.toString(),
         travelId: travelConsignment.travelId.toString(),
-        status: "delivered",
+        status: 'delivered',
         deliveryTime: travelConsignment.deliveryTime.toISOString(),
-        message: "Delivery successful! Your earning has been recorded.",
+        message: 'Delivery successful! Your earning has been recorded.',
       });
 
       await session.commitTransaction();
       session.endSession();
 
-      return res
-        .status(200)
-        .json({ message: "Status updated to delivered", travelConsignment });
+      return res.status(200).json({ message: 'Status updated to delivered', travelConsignment });
     } else {
-      return res.status(400).json({ message: "Invalid newStatus value" });
+      return res.status(400).json({ message: 'Invalid newStatus value' });
     }
   } catch (error) {
     await session.abortTransaction();
-    console.error("❌ Error in updating travel consignment status:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('❌ Error in updating travel consignment status:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   } finally {
     session.endSession();
   }

@@ -1,13 +1,13 @@
-import type { Response } from "express";
-import mongoose from "mongoose";
-import { getDateRange } from "../../lib/dateUtils";
-import logger from "../../lib/logger";
-import { formatDuration } from "../../lib/utils";
-import type { AuthRequest } from "../../middlewares/authMiddleware";
-import { Address } from "../../models/address.model";
-import { TravelModel } from "../../models/travel.model";
-import TravelConsignments from "../../models/travelconsignments.model";
-import { getDistance } from "../../services/maps.service";
+import type { Response } from 'express';
+import mongoose from 'mongoose';
+import { getDateRange } from '../../lib/dateUtils';
+import logger from '../../lib/logger';
+import { formatDuration } from '../../lib/utils';
+import type { AuthRequest } from '../../middlewares/authMiddleware';
+import { Address } from '../../models/address.model';
+import { TravelModel } from '../../models/travel.model';
+import TravelConsignments from '../../models/travelconsignments.model';
+import { getDistance } from '../../services/maps.service';
 
 export const createTravel = async (req: AuthRequest, res: Response) => {
   try {
@@ -28,7 +28,7 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       !mongoose.Types.ObjectId.isValid(fromAddressId) ||
       !mongoose.Types.ObjectId.isValid(toAddressId)
     ) {
-      return res.status(400).json({ message: "Invalid address format" });
+      return res.status(400).json({ message: 'Invalid address format' });
     }
 
     // 2 Fetch addresses
@@ -36,7 +36,7 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
     const toAddressObj = await Address.findById(toAddressId);
 
     if (!fromAddressObj || !toAddressObj) {
-      return res.status(400).json({ message: "Invalid address IDs" });
+      return res.status(400).json({ message: 'Invalid address IDs' });
     }
 
     // 3 Validate dates
@@ -44,13 +44,11 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
     const endTime = new Date(expectedEndDate).getTime();
 
     if (isNaN(startTime) || isNaN(endTime)) {
-      return res.status(400).json({ message: "Invalid date format" });
+      return res.status(400).json({ message: 'Invalid date format' });
     }
 
     if (endTime < startTime) {
-      return res
-        .status(400)
-        .json({ message: "Expected end date cannot be before start date" });
+      return res.status(400).json({ message: 'Expected end date cannot be before start date' });
     }
 
     // 4 Prepare addresses
@@ -89,21 +87,19 @@ export const createTravel = async (req: AuthRequest, res: Response) => {
       toCoordinates: toAddressObj.location,
       expectedStartDate,
       expectedEndDate,
-      distance: distance ? distance.distance : "N/A",
+      distance: distance ? distance.distance : 'N/A',
       vehicleType,
       vehicleNumber,
       durationOfStay,
       durationOfTravel,
-      status: "upcoming",
+      status: 'upcoming',
       modeOfTravel,
     });
 
-    return res
-      .status(201)
-      .json({ message: "Travel created successfully", travel });
+    return res.status(201).json({ message: 'Travel created successfully', travel });
   } catch (error: any) {
-    console.error("Error creating travel:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('Error creating travel:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -114,16 +110,12 @@ export const getTravels = async (req: AuthRequest, res: Response) => {
       createdAt: -1,
     });
     if (!travels || travels.length === 0) {
-      return res.status(404).json({ message: "No travels found" });
+      return res.status(404).json({ message: 'No travels found' });
     }
-    return res
-      .status(200)
-      .json({ message: "Travels fetched successfully", travels });
+    return res.status(200).json({ message: 'Travels fetched successfully', travels });
   } catch (error) {
-    console.error("Error fetching travels:", error);
-    res
-      .status(500)
-      .json({ message: "Internal server error while fetching travels" });
+    console.error('Error fetching travels:', error);
+    res.status(500).json({ message: 'Internal server error while fetching travels' });
   }
 };
 
@@ -133,13 +125,13 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       fromstate: string;
       tostate: string;
       date: string;
-      modeOfTravel?: "air" | "roadways" | "train";
+      modeOfTravel?: 'air' | 'roadways' | 'train';
     };
     const currentUserId = req.user;
 
     if (!fromstate || !tostate || !date) {
       return res.status(400).json({
-        message: "Missing required query parameters: fromstate, tostate, date",
+        message: 'Missing required query parameters: fromstate, tostate, date',
       });
     }
 
@@ -164,8 +156,8 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     const fromTokens = tokenize(fromstate);
     const toTokens = tokenize(tostate);
 
-    const fromRegexes = fromTokens.map((t) => new RegExp(t, "i"));
-    const toRegexes = toTokens.map((t) => new RegExp(t, "i"));
+    const fromRegexes = fromTokens.map(t => new RegExp(t, 'i'));
+    const toRegexes = toTokens.map(t => new RegExp(t, 'i'));
 
     // logger.info("before date");
 
@@ -186,7 +178,7 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       logger.error(`Date parsing error: ${error}`);
       return res.status(400).json({
         message: `Invalid date format: ${date}. Expected DD/MM/YYYY (e.g., 25/11/2025)`,
-        error: error instanceof Error ? error.message : "Date parsing failed",
+        error: error instanceof Error ? error.message : 'Date parsing failed',
       });
     }
 
@@ -196,14 +188,12 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
 
     if (modeOfTravel) {
       const normalized = modeOfTravel.toLowerCase();
-      if (["air", "airways", "airplane", "flight"].includes(normalized)) {
-        travelMode = "air";
-      } else if (
-        ["road", "roadways", "car", "bus", "vehicle"].includes(normalized)
-      ) {
-        travelMode = "roadways";
-      } else if (["train", "rail", "railways"].includes(normalized)) {
-        travelMode = "train";
+      if (['air', 'airways', 'airplane', 'flight'].includes(normalized)) {
+        travelMode = 'air';
+      } else if (['road', 'roadways', 'car', 'bus', 'vehicle'].includes(normalized)) {
+        travelMode = 'roadways';
+      } else if (['train', 'rail', 'railways'].includes(normalized)) {
+        travelMode = 'train';
       } else {
         travelMode = normalized; // fallback to raw string if it’s something new
       }
@@ -225,27 +215,27 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       $and: [
         {
           $or: [
-            { "fromAddress.state": { $in: fromRegexes } },
-            { "fromAddress.city": { $in: fromRegexes } },
-            { "fromAddress.street": { $in: fromRegexes } },
+            { 'fromAddress.state': { $in: fromRegexes } },
+            { 'fromAddress.city': { $in: fromRegexes } },
+            { 'fromAddress.street': { $in: fromRegexes } },
             // Add combined state matching
-            { "fromAddress.state": { $regex: fromstate, $options: "i" } },
-            { "fromAddress.city": { $regex: fromstate, $options: "i" } },
+            { 'fromAddress.state': { $regex: fromstate, $options: 'i' } },
+            { 'fromAddress.city': { $regex: fromstate, $options: 'i' } },
           ],
         },
         {
           $or: [
-            { "toAddress.state": { $in: toRegexes } },
-            { "toAddress.city": { $in: toRegexes } },
-            { "toAddress.street": { $in: toRegexes } },
+            { 'toAddress.state': { $in: toRegexes } },
+            { 'toAddress.city': { $in: toRegexes } },
+            { 'toAddress.street': { $in: toRegexes } },
             // Add combined state matching
-            { "toAddress.state": { $regex: tostate, $options: "i" } },
-            { "toAddress.city": { $regex: tostate, $options: "i" } },
+            { 'toAddress.state': { $regex: tostate, $options: 'i' } },
+            { 'toAddress.city': { $regex: tostate, $options: 'i' } },
           ],
         },
         {
           expectedStartDate: { $gte: startOfDay, $lt: endOfDay },
-          status: "upcoming",
+          status: 'upcoming',
           travelerId: { $ne: currentUserId },
         },
       ],
@@ -259,9 +249,8 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
 
     const travels = await TravelModel.find(query)
       .populate({
-        path: "travelerId",
-        select:
-          "firstName lastName phoneNumber profilePictureUrl rating reviewCount",
+        path: 'travelerId',
+        select: 'firstName lastName phoneNumber profilePictureUrl rating reviewCount',
       })
       .sort({ createdAt: -1 })
       .limit(50)
@@ -272,19 +261,17 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     if (!travels.length) {
       logger.info(
         `❌ No travels found for ${fromstate} → ${tostate} on ${date} ${
-          travelMode ? `(${travelMode})` : ""
-        }`
+          travelMode ? `(${travelMode})` : ''
+        }`,
       );
-      return res.status(404).json({ message: "No travels found", travels: [] });
+      return res.status(404).json({ message: 'No travels found', travels: [] });
     }
 
-    return res
-      .status(200)
-      .json({ message: "Travels fetched successfully", travels });
+    return res.status(200).json({ message: 'Travels fetched successfully', travels });
   } catch (error: any) {
-    logger.error("❌ Error locating travel:", error);
+    logger.error('❌ Error locating travel:', error);
     return res.status(500).json({
-      message: "Internal server error while locating travel",
+      message: 'Internal server error while locating travel',
       error: error instanceof Error ? error.message : error,
     });
   }
@@ -295,16 +282,12 @@ export const locateTravelbyid = async (req: AuthRequest, res: Response) => {
     const id = req.params.id;
     const travel = await TravelModel.findById(id);
     if (!travel) {
-      return res.status(404).json({ message: "No travel found" });
+      return res.status(404).json({ message: 'No travel found' });
     }
-    return res
-      .status(200)
-      .json({ message: "Travel fetched successfully", travel });
+    return res.status(200).json({ message: 'Travel fetched successfully', travel });
   } catch (error) {
-    console.error("Error fetching travel by ID:", error);
-    res
-      .status(500)
-      .json({ message: "Internal server error while fetching travel by ID" });
+    console.error('Error fetching travel by ID:', error);
+    res.status(500).json({ message: 'Internal server error while fetching travel by ID' });
   }
 };
 
@@ -312,31 +295,31 @@ export const startTravel = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });
     }
 
     const { travelId } = req.params;
 
     const travel = await TravelModel.findById(travelId);
-    if (!travel) return res.status(404).json({ message: "Travel not found" });
+    if (!travel) return res.status(404).json({ message: 'Travel not found' });
 
     if (travel.travelerId.toString() !== userId) {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(403).json({ message: 'Unauthorized' });
     }
 
     // ✅ Only allow starting if current status is 'upcoming'
-    if (travel.status !== "upcoming") {
-      return res.status(400).json({ message: "Travel is not upcoming" });
+    if (travel.status !== 'upcoming') {
+      return res.status(400).json({ message: 'Travel is not upcoming' });
     }
 
     // ✅ Update to 'ongoing'
-    travel.status = "ongoing";
+    travel.status = 'ongoing';
     await travel.save();
 
-    return res.status(200).json({ message: "Travel started", travel });
+    return res.status(200).json({ message: 'Travel started', travel });
   } catch (err) {
-    console.error("Error starting travel:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('Error starting travel:', err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -344,40 +327,41 @@ export const endTravel = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });
     }
 
     const { travelId } = req.params;
 
     const travel = await TravelModel.findById(travelId);
-    if (!travel) return res.status(404).json({ message: "Travel not found" });
+    if (!travel) return res.status(404).json({ message: 'Travel not found' });
     if (travel.travelerId.toString() !== userId) {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    if (travel.status !== "ongoing") {
-      console.log("yaha se h");
-      return res.status(400).json({ message: "Travel is not ongoing" });
+    if (travel.status !== 'ongoing') {
+      console.log('yaha se h');
+      return res.status(400).json({ message: 'Travel is not ongoing' });
     }
 
     const pendingConsignments = await TravelConsignments.find({
       travelId,
-      status: { $ne: "delivered" },
+      status: { $ne: 'delivered' },
     });
 
     if (pendingConsignments.length > 0) {
       return res.status(400).json({
-        message: "Cannot end travel before all consignments are delivered",
+        message:
+          'You cannot end the travel before all the consignments are collected by the receivers. If not collected by receivers please contact support centre.\n\n📞 Phone: 9627542222\n📧 Email: support@travelnearn.com',
       });
     }
 
-    travel.status = "completed";
+    travel.status = 'completed';
     await travel.save();
 
-    return res.status(200).json({ message: "Travel ended", travel });
+    return res.status(200).json({ message: 'Travel ended', travel });
   } catch (err) {
-    console.error("Error ending travel:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('Error ending travel:', err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -385,28 +369,26 @@ export const cancelTravel = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user;
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });
     }
 
     const { travelId } = req.params;
 
     const travel = await TravelModel.findById(travelId);
-    if (!travel) return res.status(404).json({ message: "Travel not found" });
+    if (!travel) return res.status(404).json({ message: 'Travel not found' });
     if (travel.travelerId.toString() !== userId) {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(403).json({ message: 'Unauthorized' });
     }
-    if (travel.status !== "upcoming") {
-      return res
-        .status(400)
-        .json({ message: "Only upcoming travels can be cancelled" });
+    if (travel.status !== 'upcoming') {
+      return res.status(400).json({ message: 'Only upcoming travels can be cancelled' });
     }
 
-    travel.status = "cancelled";
+    travel.status = 'cancelled';
     await travel.save();
 
-    return res.status(200).json({ message: "Travel cancelled", travel });
+    return res.status(200).json({ message: 'Travel cancelled', travel });
   } catch (err) {
-    console.error("Error cancelling travel:", err);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('Error cancelling travel:', err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };

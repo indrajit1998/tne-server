@@ -1,6 +1,6 @@
-import axios from "axios";
+// import axios from "axios";
 import type { Request, Response } from "express";
-import FormData from "form-data";
+// import FormData from "form-data";
 import jwt from "jsonwebtoken";
 import { emailSchema, phoneSchema } from "../../../validator.js";
 import { cookiesOption } from "../../constants/constant";
@@ -87,70 +87,70 @@ export const generateOtp = async (req: Request, res: Response) => {
     }
 
     // Log OTP for dev
-    // console.log(`🔐 OTP for ${validPhone}: ${otp}`);
+    console.log(`🔐 OTP for ${validPhone}: ${otp}`);
 
     // TODO: Uncomment below block in production to enable SMS sending
 
     // ✅ Send SMS using Pingbix
-    const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+    // const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
 
-    const formData = new FormData();
-    formData.append("userid", "timestrings");
-    formData.append("password", "X82w2G4f");
-    formData.append("mobile", validPhone);
-    formData.append("senderid", "TMSSYS");
-    formData.append("dltEntityId", "1701173330327453584");
-    formData.append("msg", message);
-    formData.append("sendMethod", "quick");
-    formData.append("msgType", "text");
-    formData.append("dltTemplateId", "1707173406941797486");
-    formData.append("output", "json");
-    formData.append("duplicatecheck", "true");
-    formData.append("dlr", "1");
+    // const formData = new FormData();
+    // formData.append("userid", "timestrings");
+    // formData.append("password", "X82w2G4f");
+    // formData.append("mobile", validPhone);
+    // formData.append("senderid", "TMSSYS");
+    // formData.append("dltEntityId", "1701173330327453584");
+    // formData.append("msg", message);
+    // formData.append("sendMethod", "quick");
+    // formData.append("msgType", "text");
+    // formData.append("dltTemplateId", "1707173406941797486");
+    // formData.append("output", "json");
+    // formData.append("duplicatecheck", "true");
+    // formData.append("dlr", "1");
 
-    const smsResponse = await axios.post(
-      "https://app.pingbix.com/SMSApi/send",
-      formData,
-      {
-        headers: {
-          ...formData.getHeaders(),
-          Cookie: "SERVERID=webC1",
-        },
-        maxBodyLength: Infinity,
-      }
-    );
+    // const smsResponse = await axios.post(
+    //   "https://app.pingbix.com/SMSApi/send",
+    //   formData,
+    //   {
+    //     headers: {
+    //       ...formData.getHeaders(),
+    //       Cookie: "SERVERID=webC1",
+    //     },
+    //     maxBodyLength: Infinity,
+    //   }
+    // );
 
-    console.log("✅ SMS API Response:", smsResponse.data);
+    // console.log("✅ SMS API Response:", smsResponse.data);
 
-    if (smsResponse.data?.status === "success") {
-      return res
-        .status(CODES.OK)
-        .json(
-          sendResponse(
-            CODES.OK,
-            { phoneNumber: validPhone },
-            "OTP sent successfully"
-          )
-        );
-    } else {
-      return res
-        .status(CODES.INTERNAL_SERVER_ERROR)
-        .json(
-          sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Failed to send OTP")
-        );
-    }
+    // if (smsResponse.data?.status === "success") {
+    //   return res
+    //     .status(CODES.OK)
+    //     .json(
+    //       sendResponse(
+    //         CODES.OK,
+    //         { phoneNumber: validPhone },
+    //         "OTP sent successfully"
+    //       )
+    //     );
+    // } else {
+    //   return res
+    //     .status(CODES.INTERNAL_SERVER_ERROR)
+    //     .json(
+    //       sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Failed to send OTP")
+    //     );
+    // }
 
     // TODO: Comment out the block in prod
     // For dev: just send OTP back for FE logs
-    // return res
-    //   .status(CODES.OK)
-    //   .json(
-    //     sendResponse(
-    //       CODES.OK,
-    //       { phoneNumber: validPhone, otp },
-    //       "OTP generated successfully (dev mode)"
-    //     )
-    //   );
+    return res
+      .status(CODES.OK)
+      .json(
+        sendResponse(
+          CODES.OK,
+          { phoneNumber: validPhone, otp },
+          "OTP generated successfully (dev mode)"
+        )
+      );
   } catch (error: any) {
     console.error(
       "❌ Error generating OTP:",

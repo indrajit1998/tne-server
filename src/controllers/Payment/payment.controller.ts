@@ -64,36 +64,8 @@ const normalizePhoneNumber = (phone: string): string => {
 //       consignmentId: carryRequest.consignmentId,
 //       status: "pending",
 //     });
-
-//     const now = new Date();
-
-//     // If pending payment exists
 //     if (existingPayment) {
-//       // Check if the payment order has expired (15 minutes validity)
-//       if (existingPayment.expiresAt > now) {
-//         // Order is still valid - return the existing order for retry
-//         logger.info("Reusing existing valid payment order");
-//         return res.status(200).json({
-//           message: "Payment order already exists and is valid",
-//           order: {
-//             id: existingPayment.razorpayOrderId,
-//             amount: existingPayment.amount * 100,
-//             currency: "INR",
-//           },
-//           paymentId: existingPayment._id,
-//           isRetry: true, // Flag to indicate this is a retry
-//         });
-//       } else {
-//         // Order has expired - mark as cancelled and create new one
-//         logger.info("Existing payment order expired, creating new one");
-//         session.startTransaction();
-
-//         existingPayment.status = "cancelled";
-//         await existingPayment.save({ session });
-
-//         await session.commitTransaction();
-//         // Continue to create new payment below
-//       }
+//       return res.status(400).json({ message: "Payment already initiated" });
 //     }
 
 //     // Create Razorpay order FIRST (before transaction)
@@ -117,9 +89,6 @@ const normalizePhoneNumber = (phone: string): string => {
 
 //     // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
 
-//     // Calculate expiry time (15 minutes from now)
-//     const expiresAt = new Date(now.getTime() + 20 * 60 * 1000);
-
 //     //  Handle the array destructuring properly
 //     const createdPayments = await Payment.create(
 //       [
@@ -131,7 +100,6 @@ const normalizePhoneNumber = (phone: string): string => {
 //           amount: carryRequest.senderPayAmount,
 //           status: "pending",
 //           razorpayOrderId: orderResponse.data.id,
-//           expiresAt,
 //         },
 //       ],
 //       { session }
@@ -148,7 +116,6 @@ const normalizePhoneNumber = (phone: string): string => {
 //       message: "Payment initiated",
 //       order: orderResponse.data,
 //       paymentId: paymentDoc._id,
-//       isRetry: false,
 //     });
 //   } catch (error: any) {
 //     await session.abortTransaction();
@@ -156,6 +123,248 @@ const normalizePhoneNumber = (phone: string): string => {
 //     return res
 //       .status(500)
 //       .json({ message: error.message || "Failed to initiate payment" });
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
+// export const initiatePayment = async (req: AuthRequest, res: Response) => {
+//   const session = await mongoose.startSession();
+
+//   try {
+//     const { carryRequestId } = req.body;
+//     if (!carryRequestId) throw new Error("carryRequestId is required");
+
+//     const carryRequest = await CarryRequest.findById(carryRequestId);
+//     if (!carryRequest)
+//       return res.status(404).json({ message: "Carry request not found" });
+
+//     if (carryRequest.status !== "accepted_pending_payment") {
+//       return res.status(400).json({
+//         message:
+//           "Carry request must be accepted before payment can be initiated",
+//       });
+//     }
+
+//     const now = new Date();
+
+//     // Check for existing payment for THIS specific carry request
+//     const existingPayment = await Payment.findOne({
+//       carryRequestId: carryRequestId,
+//       status: { $in: ["pending", "completed_pending_webhook"] },
+//     });
+
+//     if (existingPayment) {
+//       // check is payment is still within validity period
+//       if (existingPayment.expiresAt > now) {
+//         // order is still valid -> check if it has at least 2 minutes left
+//         const timeRemaining =
+//           existingPayment.expiresAt.getTime() - now.getTime();
+//         const twoMinutesInMs = 2 * 60 * 1000;
+
+//         if (timeRemaining > twoMinutesInMs) {
+//           // suffcieint time remianing - resuae existing order
+//           logger.info(
+//             `✅ Reusing existing payment order for carry request: ${carryRequestId}`
+//           );
+
+//           return res.status(200).json({
+//             message: "Resuming your previous payment",
+//             order: {
+//               id: existingPayment.razorpayOrderId,
+//               amount: existingPayment.amount * 100,
+//               currency: "INR",
+//             },
+//             paymentId: existingPayment._id,
+//             isRetry: true,
+//           });
+//         } else {
+//           // Less than 2 minutes remaining - cancel and create new order
+//           logger.info(
+//             `⏰ Existing order expiring soon, creating new order for: ${carryRequestId}`
+//           );
+
+//           session.startTransaction();
+//           existingPayment.status = "cancelled";
+//           await existingPayment.save({ session });
+//           await session.commitTransaction();
+//         }
+//       } else {
+//         // Order has expired - cancel it
+//         logger.info(
+//           `❌ Existing payment order expired for carry request: ${carryRequestId}`
+//         );
+
+//         session.startTransaction();
+//         existingPayment.status = "cancelled";
+//         await existingPayment.save({ session });
+//         await session.commitTransaction();
+//       }
+//     }
+
+//     // ✅ Additional safety check: Ensure no completed payment exists for this consignment
+//     // (This prevents edge case where multiple travellers were accepted simultaneously)
+//     const completedPayment = await Payment.findOne({
+//       consignmentId: carryRequest.consignmentId,
+//       status: { $in: ["completed", "completed_pending_webhook"] },
+//       type: "sender_pay",
+//     });
+
+//     if (completedPayment) {
+//       logger.error(
+//         `❌ Payment already completed for consignment: ${carryRequest.consignmentId}`
+//       );
+//       return res.status(400).json({
+//         message:
+//           "This consignment has already been paid for by another request",
+//       });
+//     }
+
+//     // ✅ Create new Razorpay order
+//     logger.info(`💳 Creating new Razorpay order for: ${carryRequestId}`);
+
+//     // // Create Razorpay order FIRST (before transaction)
+//     // const orderResponse = await axios.post(
+//     //   "https://api.razorpay.com/v1/orders",
+//     //   {
+//     //     amount: carryRequest.senderPayAmount * 100,
+//     //     currency: "INR",
+//     //     receipt: `CR_${carryRequest._id.toString()}_${Date.now()}`, // Unique receipt
+//     //     payment_capture: 1,
+//     //     // notes: {
+//     //     //   carryRequestId: carryRequest._id.toString(),
+//     //     //   consignmentId: carryRequest.consignmentId.toString(),
+//     //     //   travelId: carryRequest.travelId.toString(),
+//     //     // },
+//     //   },
+//     //   {
+//     //     auth: {
+//     //       username: env.RAZORPAY_KEY_ID,
+//     //       password: env.RAZORPAY_KEY_SECRET,
+//     //     },
+//     //   }
+//     // );
+//     let orderResponse;
+
+//     try {
+//       // 🧾 Step 1: Create Razorpay order
+//       orderResponse = await axios.post(
+//         "https://api.razorpay.com/v1/orders",
+//         {
+//           amount: carryRequest.senderPayAmount * 100, // Amount in paise
+//           currency: "INR",
+//           receipt: carryRequest._id.toString(), // Unique receipt
+//           payment_capture: 1,
+//           // notes: {
+//           //   carryRequestId: carryRequest._id.toString(),
+//           //   consignmentId: carryRequest.consignmentId.toString(),
+//           //   travelId: carryRequest.travelId.toString(),
+//           // },
+//         },
+//         {
+//           auth: {
+//             username: env.RAZORPAY_KEY_ID,
+//             password: env.RAZORPAY_KEY_SECRET,
+//           },
+//           timeout: 10000, // optional: helps avoid hanging requests
+//         }
+//       );
+
+//       const orderData = orderResponse.data;
+
+//       logger.info(
+//         "✅ Razorpay order created successfully:" +
+//           {
+//             orderId: orderData.id,
+//             amount: orderData.amount,
+//             currency: orderData.currency,
+//           }
+//       );
+
+//       return orderData;
+//     } catch (error: any) {
+//       const errMsg =
+//         error.response?.data?.error?.description ||
+//         error.response?.data?.message ||
+//         error.message ||
+//         "Failed to create Razorpay order";
+
+//       logger.error(
+//         "❌ Error creating Razorpay order:" +
+//           JSON.stringify(
+//             error.response?.data || error.message || error,
+//             null,
+//             2
+//           )
+//       );
+//     }
+
+//     logger.info("We reached here after axios call...");
+
+//     session.startTransaction();
+
+//     // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
+
+//     logger.info("transaction started...");
+
+//     // Calculate expiry time (15 minutes from now - matches Razorpay default)
+//     const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+//     logger.info("before payment creation...");
+
+//     //  Handle the array destructuring properly
+//     const createdPayments = await Payment.create(
+//       [
+//         {
+//           consignmentId: carryRequest.consignmentId,
+//           travelId: carryRequest.travelId,
+//           userId: carryRequest.requestedBy,
+//           carryRequestId: carryRequest._id, // ✅ Link to specific carry request
+//           type: "sender_pay",
+//           amount: carryRequest.senderPayAmount,
+//           status: "pending",
+//           razorpayOrderId: orderResponse?.data.id,
+//           expiresAt,
+//         },
+//       ],
+//       { session }
+//     );
+
+//     logger.info("after payment creation...");
+
+//     const paymentDoc = createdPayments[0];
+//     if (!paymentDoc) {
+//       throw new Error("Failed to create payment record");
+//     }
+
+//     await session.commitTransaction();
+
+//     logger.info(
+//       `✅ Payment initiated successfully for carry request: ${carryRequestId}`
+//     );
+
+//     return res.status(200).json({
+//       message: "Payment initiated successfully",
+//       order: orderResponse?.data,
+//       paymentId: paymentDoc._id,
+//       isRetry: false,
+//     });
+//   } catch (error: any) {
+//     await session.abortTransaction();
+//     logger.error("❌ Initiate payment error:", error);
+
+//     // ✅ Better error handling for common scenarios
+//     if (error.response?.data) {
+//       // Razorpay API error
+//       return res.status(500).json({
+//         message: "Payment gateway error. Please try again.",
+//         error: error.response.data.error?.description || "Unknown error",
+//       });
+//     }
+
+//     return res.status(500).json({
+//       message: error.message || "Failed to initiate payment",
+//     });
 //   } finally {
 //     session.endSession();
 //   }
@@ -179,15 +388,63 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const now = new Date();
+
+    // Check for existing payment
     const existingPayment = await Payment.findOne({
-      consignmentId: carryRequest.consignmentId,
-      status: "pending",
+      carryRequestId: carryRequestId,
+      status: { $in: ["pending", "completed_pending_webhook"] },
     });
+
     if (existingPayment) {
-      return res.status(400).json({ message: "Payment already initiated" });
+      if (existingPayment.expiresAt > now) {
+        const timeRemaining =
+          existingPayment.expiresAt.getTime() - now.getTime();
+        const twoMinutesInMs = 2 * 60 * 1000;
+
+        if (timeRemaining > twoMinutesInMs) {
+          logger.info(
+            `✅ Reusing existing payment order for carry request: ${carryRequestId}`
+          );
+          return res.status(200).json({
+            message: "Resuming your previous payment",
+            order: {
+              id: existingPayment.razorpayOrderId,
+              amount: existingPayment.amount * 100,
+              currency: "INR",
+            },
+            paymentId: existingPayment._id,
+            isRetry: true,
+          });
+        } else {
+          session.startTransaction();
+          existingPayment.status = "cancelled";
+          await existingPayment.save({ session });
+          await session.commitTransaction();
+        }
+      } else {
+        session.startTransaction();
+        existingPayment.status = "cancelled";
+        await existingPayment.save({ session });
+        await session.commitTransaction();
+      }
     }
 
-    // Create Razorpay order FIRST (before transaction)
+    // Safety check for completed payment
+    const completedPayment = await Payment.findOne({
+      consignmentId: carryRequest.consignmentId,
+      status: { $in: ["completed", "completed_pending_webhook"] },
+      type: "sender_pay",
+    });
+
+    if (completedPayment) {
+      return res.status(400).json({
+        message:
+          "This consignment has already been paid for by another request",
+      });
+    }
+
+    // ✅ FIX: Create Razorpay order BEFORE transaction
     const orderResponse = await axios.post(
       "https://api.razorpay.com/v1/orders",
       {
@@ -201,51 +458,162 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
           username: env.RAZORPAY_KEY_ID,
           password: env.RAZORPAY_KEY_SECRET,
         },
+        timeout: 10000,
       }
     );
 
+    logger.info("✅ Razorpay order created:", orderResponse.data.id);
+
+    // ✅ NOW start transaction and save to DB
     session.startTransaction();
 
-    // console.log("ORDER RESPONSE FROM INITIATE PAYMENT => ", orderResponse);
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
 
-    //  Handle the array destructuring properly
     const createdPayments = await Payment.create(
       [
         {
           consignmentId: carryRequest.consignmentId,
           travelId: carryRequest.travelId,
           userId: carryRequest.requestedBy,
+          carryRequestId: carryRequest._id,
           type: "sender_pay",
           amount: carryRequest.senderPayAmount,
           status: "pending",
-          razorpayOrderId: orderResponse.data.id,
+          razorpayOrderId: orderResponse.data.id, // ✅ Correctly saved now
+          expiresAt,
         },
       ],
       { session }
     );
 
     const paymentDoc = createdPayments[0];
-    if (!paymentDoc) {
-      throw new Error("Failed to create payment record");
-    }
+    if (!paymentDoc) throw new Error("Failed to create payment record");
 
     await session.commitTransaction();
 
+    logger.info(
+      `✅ Payment initiated successfully for carry request: ${carryRequestId}`
+    );
+
     return res.status(200).json({
-      message: "Payment initiated",
+      message: "Payment initiated successfully",
       order: orderResponse.data,
       paymentId: paymentDoc._id,
+      isRetry: false,
     });
   } catch (error: any) {
     await session.abortTransaction();
-    logger.error("Initiate payment error:", error);
-    return res
-      .status(500)
-      .json({ message: error.message || "Failed to initiate payment" });
+    logger.error("❌ Initiate payment error:", error);
+
+    if (error.response?.data) {
+      return res.status(500).json({
+        message: "Payment gateway error. Please try again.",
+        error: error.response.data.error?.description || "Unknown error",
+      });
+    }
+
+    return res.status(500).json({
+      message: error.message || "Failed to initiate payment",
+    });
   } finally {
     session.endSession();
   }
 };
+
+// export const capturePayment = async (req: AuthRequest, res: Response) => {
+//   const session = await mongoose.startSession();
+
+//   try {
+//     const { paymentId, razorpayPaymentId, razorpaySignature } = req.body;
+
+//     const payment = await Payment.findById(paymentId);
+//     if (!payment) return res.status(404).json({ message: "Payment not found" });
+
+//     // Check if payment was cancelled (user abandoned it)
+//     if (payment.status === "cancelled") {
+//       return res.status(400).json({
+//         message: "This payment was cancelled. Please initiate a new payment.",
+//       });
+//     }
+
+//     // ✅ CRITICAL: If webhook already processed it, just return success
+//     // This prevents overwriting the "completed" status from webhook
+//     if (payment.status === "completed") {
+//       logger.info(`✅ Payment already completed by webhook: ${paymentId}`);
+//       return res.status(200).json({
+//         message: "Payment already completed",
+//         paymentId: payment._id,
+//         status: "completed",
+//       });
+//     }
+
+//     // Also check if it's already pending webhook (prevent duplicate processing)
+//     if (
+//       payment.status === "completed_pending_webhook" &&
+//       payment.razorpayPaymentId === razorpayPaymentId
+//     ) {
+//       logger.info(
+//         `✅ Payment already verified, awaiting webhook: ${paymentId}`
+//       );
+//       return res.status(200).json({
+//         message: "Payment already verified, awaiting webhook",
+//         paymentId: payment._id,
+//         status: "completed_pending_webhook",
+//       });
+//     }
+
+//     // Check if payment has expired
+//     if (payment.expiresAt < new Date()) {
+//       session.startTransaction();
+//       payment.status = "cancelled";
+//       await payment.save({ session });
+//       await session.commitTransaction();
+
+//       return res.status(400).json({
+//         message: "Payment order has expired. Please initiate a new payment.",
+//       });
+//     }
+
+//     const generatedSignature = crypto
+//       .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
+//       .update(`${payment.razorpayOrderId}|${razorpayPaymentId}`)
+//       .digest("hex");
+
+//     if (generatedSignature !== razorpaySignature) {
+//       return res
+//         .status(400)
+//         .json({ message: "Payment signature verification failed" });
+//     }
+
+//     session.startTransaction();
+
+//     // ✅ Only update if not already completed
+//     if (payment.status !== ("completed" as Payment["status"])) {
+//       payment.status = "completed_pending_webhook";
+//       payment.razorpayPaymentId = razorpayPaymentId;
+//       await payment.save({ session });
+
+//       logger.info(
+//         `✅ Payment verified, status: completed_pending_webhook, awaiting webhook: ${paymentId}`
+//       );
+//     }
+
+//     await session.commitTransaction();
+
+//     return res.status(200).json({
+//       message: "Payment verified, awaiting confirmation from Razorpay webhook",
+//       paymentId: payment._id,
+//     });
+//   } catch (error: any) {
+//     await session.abortTransaction();
+//     logger.error("Capture payment error:", error);
+//     return res
+//       .status(500)
+//       .json({ message: error.message || "Failed to capture payment" });
+//   } finally {
+//     session.endSession();
+//   }
+// };
 
 export const capturePayment = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
@@ -305,6 +673,9 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
       .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
       .update(`${payment.razorpayOrderId}|${razorpayPaymentId}`)
       .digest("hex");
+
+    logger.info("generatedSignature => " + generatedSignature);
+    logger.info("razorpaySignature => " + razorpaySignature);
 
     if (generatedSignature !== razorpaySignature) {
       return res
@@ -433,6 +804,22 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           }
 
           logger.info(`✅ CarryRequest updated to accepted`);
+
+          // Auto-reject other carry requests
+          await CarryRequest.updateMany(
+            {
+              consignmentId: payment.consignmentId,
+              _id: { $ne: carryRequest._id }, // Not the accepted one
+              status: { $in: ["pending", "accepted_pending_payment"] },
+            },
+            {
+              status: "rejected",
+              // rejectionReason: "Another traveller was selected", // Optional field
+            },
+            { session }
+          );
+
+          logger.info(`✅ Auto-rejected other carry requests for consignment`);
 
           // Update Consignment status to "assigned"
           // console.log("Updating Consignment status to 'assigned'...");
@@ -651,6 +1038,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                     userId: null, // Platform has no userId
                     consignmentId: payment.consignmentId,
                     travelId: payment.travelId,
+                    carryRequestId: payment.carryRequestId,
                     type: "platform_commission",
                     amount: platformCommission, // Commission
                     status: "completed", // Instantly completed when sender pays
