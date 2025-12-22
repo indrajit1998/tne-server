@@ -65,7 +65,7 @@ interface PopulatedConsignment {
     _id: string;
     firstName: string;
     lastName: string;
-    profilePicture?: string;
+    profilePictureUrl?: string;
     email?: string;
     phoneNumber?: string;
   };
@@ -399,19 +399,19 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Missing requestId' });
     }
 
-    console.log('REQUESTID =>', JSON.stringify(requestId, null, 2));
-    console.log(typeof requestId);
+    // console.log('REQUESTID =>', JSON.stringify(requestId, null, 2));
+    // console.log(typeof requestId);
 
     const carryRequest = await CarryRequest.findById(requestId)
       .populate({
         path: 'travellerId',
         model: User,
-        select: 'firstName lastName profilePicture rating reviewCount email',
+        select: 'firstName lastName profilePictureUrl rating reviewCount email',
       })
       .populate({
         path: 'requestedBy',
         model: User,
-        select: 'firstName lastName profilePicture email',
+        select: 'firstName lastName profilePictureUrl email',
       })
       .populate({
         path: 'consignmentId',
@@ -421,7 +421,7 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
         populate: {
           path: 'senderId',
           model: User,
-          select: 'firstName lastName profilePicture email phoneNumber',
+          select: 'firstName lastName profilePictureUrl email phoneNumber',
         },
       })
       .lean();
@@ -429,6 +429,8 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
     if (!carryRequest) {
       return res.status(404).json({ message: 'Carry request not found' });
     }
+
+    // logger.info('TRAVELLER ==> ' + carryRequest);
 
     // const formatCoordinates = (coords?: GeoPoint) => {
     //   if (!coords || !Array.isArray(coords.coordinates)) return null;
@@ -466,6 +468,8 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
           toCoordinates: formatCoordinates(relatedTravelDoc.toCoordinates),
         }
       : null;
+
+    // console.log('TRAVELLER ==> ', JSON.stringify(carryRequest.travellerId, null, 2));
 
     const formattedCarryRequest = {
       _id: carryRequest._id,
