@@ -115,7 +115,7 @@ export const generateOtp = async (req: Request, res: Response) => {
       maxBodyLength: Infinity,
     });
 
-    // console.log("✅ SMS API Response:", smsResponse.data);
+    console.log('✅ SMS API Response:', smsResponse.data);
 
     if (smsResponse.data?.status === 'success') {
       return res
