@@ -5,7 +5,6 @@ const envSchema = z.object({
   PORT: z.string().default('4000'),
   APP_NAME: z.string().default('tne-server'),
   APP_URL: z.string().default('http://localhost:3000'), //TODO: Add proper url
-  LOGTAIL_SOURCE_TOKEN: z.string().optional(),
   DATABASE_URL: z.url(),
   SEND_MESSAGE_API_KEY: z.string(),
   JWT_SECRET: z.string().min(8, 'JWT_SECRET must be at least 8 characters long'),
@@ -34,10 +33,5 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
-
-if (env.NODE_ENV === 'production' && !env.LOGTAIL_SOURCE_TOKEN) {
-  console.error('LOGTAIL_SOURCE_TOKEN is required in production');
-  process.exit(1);
-}
 
 export default env;
