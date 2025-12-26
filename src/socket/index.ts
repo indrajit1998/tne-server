@@ -22,6 +22,9 @@ export const initSocket = (server: HttpServer) => {
         methods: ['GET', 'POST'],
       },
       pingTimeout: 60000, // closes inactive sockets
+      transports: ['websocket', 'polling'],
+      allowUpgrades: true,
+      upgradeTimeout: 30000,
     },
   );
 
@@ -30,7 +33,11 @@ export const initSocket = (server: HttpServer) => {
   io.on('connection', (socket: Socket) => {
     const userId = socket.data.userId;
 
-    if (!userId) return;
+    if (!userId) {
+      socket.emit('error', 'UNAUTHORIZED_SOCKET');
+      socket.disconnect(true);
+      return;
+    }
 
     // Join personal room
     socket.join(`user:${userId}`);
