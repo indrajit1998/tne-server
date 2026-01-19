@@ -247,3 +247,30 @@ export async function getDistance(
     return null;
   }
 }
+
+export async function geocodeAddress(address: string): Promise<LatLng | null> {
+  const GEOCODE_URL = `https://maps.googleapis.com/maps/api/geocode/json`;
+
+  try {
+    const { data } = await axios.get<GeocodeApiResponse>(GEOCODE_URL, {
+      params: { address, key: API_KEY },
+    });
+
+    if (data.status !== "OK" || !data.results || data.results.length === 0) {
+      logger.error(`Geocode API Error for address "${address}": ${data.status}`);
+      return null;
+    }
+
+    const firstResult = data.results?.[0];
+    if (!firstResult?.geometry?.location) {
+      logger.error(`Geocode Result Error: geometry.location missing for address "${address}"`);
+      return null;
+    }
+
+    const { lat, lng } = firstResult.geometry.location;
+    return { lat, lng };
+  } catch (error) {
+    logger.error(`Geocoding failed for address "${address}": ${error}`);
+    return null;
+  }
+}
