@@ -42,6 +42,8 @@ interface Travel {
   status: "upcoming" | "ongoing" | "completed" | "cancelled" | "expired";
   createdAt?: Date;
   updatedAt?: Date;
+  startedAt?: Date;
+  completedAt?: Date;
 }
 
 const travelSchema = new Schema<Travel>(
@@ -100,6 +102,8 @@ const travelSchema = new Schema<Travel>(
       enum: ["upcoming", "ongoing", "completed", "cancelled", "expired"],
       required: true,
     },
+    startedAt: { type: Date, required: false },
+    completedAt: { type: Date, required: false },
   },
   { timestamps: true }
 );

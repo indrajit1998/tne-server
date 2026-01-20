@@ -314,6 +314,7 @@ export const startTravel = async (req: AuthRequest, res: Response) => {
 
     // ✅ Update to 'ongoing'
     travel.status = 'ongoing';
+    travel.startedAt = new Date();
     await travel.save();
 
     return res.status(200).json({ message: 'Travel started', travel });
@@ -356,6 +357,7 @@ export const endTravel = async (req: AuthRequest, res: Response) => {
     }
 
     travel.status = 'completed';
+    travel.completedAt = new Date();
     await travel.save();
 
     return res.status(200).json({ message: 'Travel ended', travel });
