@@ -55,6 +55,7 @@ interface Consignment {
   category: "document" | "non-document";
   subCategory?: string;
   description: string;
+  specialRequest?: string;
   handleWithCare: boolean;
   images: string[];
   status:
@@ -174,6 +175,10 @@ const consignmentSchema = new Schema<Consignment>(
     description: {
       type: String,
       required: true,
+    },
+    specialRequest: {
+      type: String,
+      required: false,
     },
     handleWithCare: {
       type: Boolean,

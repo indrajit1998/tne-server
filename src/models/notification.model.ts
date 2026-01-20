@@ -9,6 +9,7 @@ interface Notification {
   requestId?: Types.ObjectId;
   relatedTravelId?: Types.ObjectId;
   relatedPaymentId?: Types.ObjectId;
+  typeOfNotif?: "consignment" | "travel" | "general";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +24,11 @@ const notificationSchema = new Schema<Notification>(
     requestId: { type: Schema.Types.ObjectId, ref: "CarryRequest" },
     relatedTravelId: { type: Schema.Types.ObjectId, ref: "Travel" },
     relatedPaymentId: { type: Schema.Types.ObjectId, ref: "Payments" },
+    typeOfNotif: {
+      type: String,
+      enum: ["consignment", "travel", "general"],
+      default: "general",
+    },
   },
   { timestamps: true }
 );

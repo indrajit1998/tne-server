@@ -99,6 +99,7 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       category,
       subCategory,
       description,
+      specialRequest,
       handleWithCare,
       images,
     } = req.body;
@@ -121,6 +122,7 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       category,
       subCategory,
       description,
+      specialRequest,
       handleWithCare,
       images,
     });
@@ -229,6 +231,7 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       category,
       subCategory,
       description,
+      specialRequest,
       handleWithCare,
       images,
       status: 'published',
@@ -417,7 +420,7 @@ export const getCarryRequestById = async (req: AuthRequest, res: Response) => {
         path: 'consignmentId',
         model: ConsignmentModel,
         select:
-          'fromAddress toAddress fromCoordinates toCoordinates distance weight weightUnit description category subCategory images senderId',
+          'fromAddress toAddress fromCoordinates toCoordinates distance weight weightUnit description category subCategory images senderId specialRequest handleWithCare',
         populate: {
           path: 'senderId',
           model: User,
@@ -587,11 +590,12 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
     if (!notificationData) {
       return res.status(500).json({ message: 'Failed to generate notification data' });
     }
-    const { title, message } = notificationData;
+    const { title, message, typeOfNotif } = notificationData;
     const notification = await Notification.create({
       userId: travel.travelerId,
       title,
       message,
+      typeOfNotif,
       isRead: false,
       relatedConsignmentId: consignment._id,
       requestId: carryRequestBySender._id,
@@ -692,12 +696,13 @@ export const carryRequestByTraveller = async (req: AuthRequest, res: Response) =
       return res.status(500).json({ message: 'Failed to generate notification data' });
     }
 
-    const { title, message } = notificationData;
+    const { title, message, typeOfNotif } = notificationData;
 
     const notification = await Notification.create({
       userId: consignmentSenderId,
       title,
       message,
+      typeOfNotif,
       isRead: false,
       relatedConsignmentId: consignment._id,
       requestId: carryRequestByTraveller._id,
@@ -1046,12 +1051,14 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       : carryRequest.travellerId.toString();
 
     const rejectorName = isTravellerRejecting ? travellerName : senderName;
+    const roleSuffix = isTravellerRejecting ? ' (Traveler)' : '';
 
     await Notification.create({
       userId: targetUserId,
       title: 'Carry request update',
-      message: `${rejectorName} has rejected your carry request`,
-      typeOfNotif: 'consignment',
+      message: `${rejectorName}${roleSuffix} has not accepted your consignment carry request`,
+      // ✅ FIXED: Set typeOfNotif based on who is receiving the notification
+      typeOfNotif: isTravellerRejecting ? 'consignment' : 'travel',
       relatedConsignmentId: carryRequest.consignmentId,
       requestId: carryRequest._id,
       isRead: false,
@@ -1092,9 +1099,8 @@ export const updateTravelConsignmentStatus = async (req: AuthRequest, res: Respo
     const { travelConsignmentId } = req.params;
     const { newStatus, otp } = req.body;
 
-    const travelConsignment = await TravelConsignments.findById(travelConsignmentId).session(
-      session,
-    );
+    const travelConsignment =
+      await TravelConsignments.findById(travelConsignmentId).session(session);
     if (!travelConsignment) {
       return res.status(404).json({ message: 'No travel consignment found' });
     }

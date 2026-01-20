@@ -4,6 +4,7 @@ import sendResponse from "../lib/ApiResponse";
 import logger from "../lib/logger";
 import type { AuthRequest } from "../middlewares/authMiddleware";
 import { Address } from "../models/address.model";
+import { geocodeAddress } from "../services/maps.service";
 import { addressSchema } from "../validations/zod";
 
 export const addAddress = async (req: AuthRequest, res: Response) => {
@@ -27,6 +28,19 @@ export const addAddress = async (req: AuthRequest, res: Response) => {
 
     const addressData = validatedData.data;
 
+    let { lat, lng } = addressData.coordinates;
+
+    // Fallback Geocoding if coordinates are 0,0 (likely manual entry)
+    if (lat === 0 && lng === 0) {
+      const fullAddressString = `${addressData.flatNo}, ${addressData.street}, ${addressData.city}, ${addressData.state}, ${addressData.postalCode}, ${addressData.country}`;
+      const geocoded = await geocodeAddress(fullAddressString);
+      if (geocoded) {
+        lat = geocoded.lat;
+        lng = geocoded.lng;
+        logger.info(`BE Geocoded manual address: ${fullAddressString} -> ${lat}, ${lng}`);
+      }
+    }
+
     const address = await Address.create({
       userId,
       city: addressData.city,
@@ -39,7 +53,7 @@ export const addAddress = async (req: AuthRequest, res: Response) => {
       street: addressData.street,
       location: {
         type: "Point",
-        coordinates: [addressData.coordinates.lng, addressData.coordinates.lat],
+        coordinates: [lng, lat],
       },
     });
 
@@ -111,6 +125,19 @@ export const updateAddress = async (req: AuthRequest, res: Response) => {
 
     const addressData = validatedData.data;
 
+    let { lat, lng } = addressData.coordinates;
+
+    // Fallback Geocoding if coordinates are 0,0 (likely manual entry)
+    if (lat === 0 && lng === 0) {
+      const fullAddressString = `${addressData.flatNo}, ${addressData.street}, ${addressData.city}, ${addressData.state}, ${addressData.postalCode}, ${addressData.country}`;
+      const geocoded = await geocodeAddress(fullAddressString);
+      if (geocoded) {
+        lat = geocoded.lat;
+        lng = geocoded.lng;
+        logger.info(`BE Geocoded manual address (update): ${fullAddressString} -> ${lat}, ${lng}`);
+      }
+    }
+
     const updatedAddress = await Address.findOneAndUpdate(
       { _id: id, userId },
       {
@@ -124,10 +151,7 @@ export const updateAddress = async (req: AuthRequest, res: Response) => {
         street: addressData.street,
         location: {
           type: "Point",
-          coordinates: [
-            addressData.coordinates.lng,
-            addressData.coordinates.lat,
-          ],
+          coordinates: [lng, lat],
         },
       },
       { new: true }
