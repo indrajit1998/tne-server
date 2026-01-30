@@ -34,6 +34,44 @@ export const generateOtp = async (req: Request, res: Response) => {
     }
 
     const validPhone = result.data;
+    const DUMMY_PHONE = env.DUMMY_USER_PHONE;
+    const DUMMY_OTP = env.DUMMY_USER_OTP;
+
+    //CHECK FOR DUMMY USER
+    if (validPhone === DUMMY_PHONE) {
+      logger.info(`Dummy user detected: ${validPhone}. Bypassing SMS.`);
+
+      // Ensure user exists
+      let user = await User.findOne({ phoneNumber: validPhone });
+      if (!user) {
+        user = await User.create({
+          phoneNumber: validPhone,
+          firstName: 'Review',
+          lastName: 'User',
+          email: 'reviewer@travelnearn.com',
+          onboardingCompleted: true, // Bypass onboarding for reviewer if needed
+          isVerified: true,
+        });
+      }
+
+      // Set fixed OTP in Verification
+      let verification = await Verification.findOne({ phoneNumber: validPhone });
+      if (verification) {
+        verification.code = parseInt(DUMMY_OTP, 10);
+        verification.expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // 60d expiry for reviewer
+        await verification.save();
+      } else {
+        await Verification.create({
+          phoneNumber: validPhone,
+          code: parseInt(DUMMY_OTP, 10),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        });
+      }
+
+      return res
+        .status(CODES.OK)
+        .json(sendResponse(CODES.OK, { phoneNumber: validPhone }, 'OTP sent successfully'));
+    }
 
     // Generate OTP
     const otp = generateRandomOtp();

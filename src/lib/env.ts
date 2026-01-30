@@ -23,6 +23,8 @@ const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string(),
   AWS_S3_BUCKET_NAME: z.string(),
   AWS_S3_PUBLIC_URL: z.string(),
+  DUMMY_USER_PHONE: z.string().optional().default('+916289166971'),
+  DUMMY_USER_OTP: z.string().optional().default('123456'),
 });
 
 const parsed = envSchema.safeParse(process.env);
