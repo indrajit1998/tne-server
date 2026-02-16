@@ -88,17 +88,17 @@ export async function generateOtp(phoneNumber: string, type?: 'sender' | 'receiv
 
   const message =
     type === 'receiver'
-      ? `Please use OTP ${otp} to accept the Consignment from the Sender after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
+      ? `Please use OTP ${otp} to receive/collect the Consignment from the Traveler. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
       : type === 'sender'
-      ? `Please use OTP ${otp} to Collect the Consignment from the Traveler after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
-      : `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+        ? `Please use OTP ${otp} to Handover the Consignment to the Traveler for confirmation. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
+        : `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
 
   const dltTemplateId =
     type === 'sender'
-      ? '1707173408029753777' // sender template
+      ? '1707177028520360168' // sender template
       : type === 'receiver'
-      ? '1707173408034076405' // receiver template
-      : '1707173408029753777'; // fallback for login
+        ? '1707177039824571525' // receiver template
+        : '1707173408029753777'; // fallback for login
 
   const formData = new FormData();
   formData.append('userid', 'timestrings');
