@@ -63,7 +63,7 @@ const BankDetailsSchema = new Schema<BankDetails>(
     ifscCode: { type: String, required: true },
     bankName: { type: String, required: true },
     branch: { type: String, required: true },
-    accountHash: { type: String, required: true, unique: true },
+    accountHash: { type: String, required: true, unique: true, sparse: true },
     razorpayFundAccountId: { type: String },
     isVerified: { type: Boolean, default: false },
   },
