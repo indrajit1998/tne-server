@@ -21,7 +21,7 @@ export interface IKycTask {
 const KycTaskSchema = new Schema<IKycTask>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    groupId: { type: String, required: true, index: true },
+    groupId: { type: String, required: false },
     taskType: { type: String, required: true },
     taskId: { type: String },
     requestId: { type: String, index: true },

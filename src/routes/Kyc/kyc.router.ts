@@ -1,29 +1,21 @@
 import { Router } from "express";
-import {
-  getKycStatus,
-  idfyWebhook,
-  retryFetchResult,
-  startDocumentVerification,
-  startFaceVerification,
-} from "../../controllers/Idfy/idfy.controller";
+import { startAadhaarKyc, getAadhaarKycStatus, getKycStatus, cashfreeWebhook,  } from "../../controllers/cashfree/cashfree.controller";
 import isAuthMiddleware from "../../middlewares/authMiddleware";
 
 const kycRouter = Router();
 
-// Start OCR-based KYC verification (PAN / Aadhaar / Driving License)
-kycRouter.post("/start", isAuthMiddleware, startDocumentVerification);
-
-// Start selfie (face liveness) verification
-kycRouter.post("/selfie", isAuthMiddleware, startFaceVerification);
+// Start OTP-based Aadhaar EKYC verification
+kycRouter.get("/url", isAuthMiddleware, startAadhaarKyc);
 
 // Fetch current KYC status
 kycRouter.get("/status", isAuthMiddleware, getKycStatus);
 
 // Manually retry task fetch (optional, dev/admin only)
-kycRouter.post("/fetch-result", isAuthMiddleware, retryFetchResult);
+kycRouter.get("/fetch-result", isAuthMiddleware, getAadhaarKycStatus);
 
-//  Public webhook — called by IDfy when async task completes
+//  Public webhook — called by Cashfree when async task completes
 
-kycRouter.post("/webhook", idfyWebhook);
+kycRouter.post("/webhook", cashfreeWebhook);
+
 
 export default kycRouter;

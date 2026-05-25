@@ -1,6 +1,9 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface KYCSubDocument {
+  name: any;
+  dob: any;
+  gender: any;
   requestId?: string;
   status: "pending" | "verified" | "failed" | "not_provided";
 }
@@ -105,6 +108,9 @@ const UserSchema = new Schema<User>(
         },
         ind_aadhaar: {
           requestId: { type: String },
+          name: { type: String },
+          dob: { type: String },
+          gender: { type: String, enum: ['M', 'F', 'T'] },
           status: {
             type: String,
             enum: ["pending", "verified", "failed", "not_provided"],
