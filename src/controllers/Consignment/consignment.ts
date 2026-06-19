@@ -197,18 +197,25 @@ export const createConsignment = async (req: AuthRequest, res: Response) => {
       "and",
       toAddressObj.city,
     );
-    let distance: any = { distance: "N/A", distanceValue: 0 };
+    let distance: any = { distance: "N/A", distanceValue: 50 }; // ✅ Default to 50km minimum
     try {
       const distanceResult = await getDistance(
         fromAddressObj.city,
         toAddressObj.city,
       );
-      if (distanceResult) {
+      if (distanceResult && distanceResult.distanceValue > 0) {
         distance = distanceResult;
       }
-      console.log("✅ Distance:", distance.distance);
+      console.log(
+        "✅ Distance:",
+        distance.distance,
+        "(",
+        distance.distanceValue,
+        "km)",
+      );
     } catch (err: any) {
       console.error("⚠️ Distance calculation failed:", err.message);
+      console.log("📏 Using default distance: 50km");
       // Continue with default distance
     }
 
