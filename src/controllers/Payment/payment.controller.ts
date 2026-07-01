@@ -942,13 +942,11 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             } else {
               logger.info("📦 Different sender and receiver:");
               logger.info(
-                `   Sender OTP → ${senderPhone} (${
-                  sender.firstName || "Unknown"
+                `   Sender OTP → ${senderPhone} (${sender.firstName || "Unknown"
                 })`
               );
               logger.info(
-                `   Receiver OTP → ${receiverPhone} (${
-                  consignment.receiverName || "Unknown"
+                `   Receiver OTP → ${receiverPhone} (${consignment.receiverName || "Unknown"
                 })`
               );
             }
@@ -1051,7 +1049,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             } catch (error) {
               logger.error(
                 "❌ Failed to create platform commission payment record:" +
-                  error
+                error
               );
             }
           }
@@ -1126,164 +1124,6 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           logger.warn(`⚠️ Payment failed for order ${razorpayOrderId}`);
         }
 
-        // ================= PAYOUT EVENTS =================
-      }
-      // ------------ PAYOUT EVENTS -------------
-      else if (event.startsWith("payout.")) {
-        const payoutEntity = payload?.payout?.entity;
-        if (!payoutEntity) throw new Error("Missing payout entity in payload");
-
-        const { id: razorpayPayoutId, fund_account_id: fundAccountId } =
-          payoutEntity;
-        const { amount: payoutAmountInPaise } = payoutEntity;
-        const payoutAmount = Number(payoutAmountInPaise) / 100;
-        const notes = payoutEntity.notes || {}; // notes you set when creating payout
-        const notedUserId = notes.userId ?? null;
-        const notedConsignmentId = notes.consignmentId ?? null;
-        const notedTravelId = notes.travelId ?? null;
-
-        // IDempotency check to ensure payout record exists
-        let existingPayout: PayoutDoc | null = await Payout.findOne({
-          razorpayPayoutId,
-        }).session(session);
-
-        // determine userId by fund account lookup (preferred) or notes fallback
-        let userId = null;
-        if (fundAccountId) {
-          const payoutAccount = await PayoutAccountsModel.findOne({
-            razorpayFundAccountId: fundAccountId,
-          }).session(session);
-          if (payoutAccount) userId = payoutAccount.userId;
-        }
-        // fallback to notes.userId if fundAccount lookup didn't find
-        if (!userId && notedUserId) {
-          // ensure it's converted to ObjectId if it's a string
-          try {
-            userId = new mongoose.Types.ObjectId(notedUserId);
-          } catch {
-            // keep as null if invalid
-            userId = null;
-          }
-        }
-
-        if (event === "payout.processed") {
-          if (!existingPayout) {
-            logger.warn(
-              "Existing payout not found, creating a payout record..."
-            );
-
-            const created = await Payout.create(
-              [
-                {
-                  userId: userId,
-                  travelId: notedTravelId
-                    ? new mongoose.Types.ObjectId(notedTravelId)
-                    : undefined,
-                  consignmentId: notedConsignmentId
-                    ? new mongoose.Types.ObjectId(notedConsignmentId)
-                    : undefined,
-                  amount: payoutAmount,
-                  status: "completed",
-                  razorpayPayoutId,
-                  razorpayPaymentId: payoutEntity.payment_id || undefined,
-                },
-              ],
-              { session }
-            );
-
-            existingPayout = created[0] ?? null; // <-- fallback to null if array is empty
-          } else {
-            // update existing record
-            existingPayout.status = "completed";
-            existingPayout.razorpayPaymentId =
-              existingPayout.razorpayPaymentId || payoutEntity.payment_id;
-            await existingPayout.save({ session });
-          }
-
-          // Mark corresponding earning(s) as withdrawn:
-          // Only mark earnings that are already completed (delivered) and not withdrawn.
-          // Prefer matching by consignmentId if available, otherwise by userId + amount as a fallback.
-          if (existingPayout) {
-            if (existingPayout.consignmentId) {
-              await Earning.updateMany(
-                {
-                  userId: existingPayout.userId,
-                  consignmentId: existingPayout.consignmentId,
-                  status: "completed",
-                  is_withdrawn: false,
-                },
-                {
-                  $set: {
-                    is_withdrawn: true,
-                    withdrawnAt: new Date(),
-                  },
-                },
-                { session }
-              );
-            }
-
-            // partial payout logic (kinda flawed)
-            // else if (userId) {
-            //   // fallback: mark earliest completed earnings up to the payout amount
-            //   // (implementation here tries to be conservative: find completed not withdrawn earnings and mark until sum >= payoutAmount)
-            //   const earnings = await Earning.find(
-            //     {
-            //       userId,
-            //       status: "completed",
-            //       is_withdrawn: false,
-            //     },
-            //     null,
-            //     { sort: { createdAt: 1 } }
-            //   ).session(session);
-
-            //   let remaining = payoutAmount;
-            //   for (const e of earnings) {
-            //     if (remaining <= 0) break;
-            //     // if earning amount <= remaining, mark it withdrawn fully
-            //     remaining -= e.amount;
-            //     e.is_withdrawn = true;
-            //     e.withdrawnAt = new Date();
-            //     await e.save({ session });
-            //   }
-            // }
-          }
-
-          logger.info(`✅ Payout processed successfully: ${razorpayPayoutId}`);
-        } else if (event === "payout.failed") {
-          // mark existing payout as failed (if present)
-          if (existingPayout) {
-            existingPayout.status = "failed";
-            existingPayout.failureReason = payoutEntity.failure_reason || "";
-            await existingPayout.save({ session });
-          } else {
-            // create a failed record for bookkeeping
-            await Payout.create(
-              [
-                {
-                  userId: userId,
-                  travelId: notedTravelId
-                    ? new mongoose.Types.ObjectId(notedTravelId)
-                    : undefined,
-                  consignmentId: notedConsignmentId
-                    ? new mongoose.Types.ObjectId(notedConsignmentId)
-                    : undefined,
-                  amount: payoutAmount,
-                  status: "failed",
-                  razorpayPayoutId,
-                  failureReason: payoutEntity.failure_reason || "",
-                },
-              ],
-              { session }
-            );
-          }
-
-          logger.warn(
-            `⚠️ Payout failed: ${razorpayPayoutId} reason: ${payoutEntity.failure_reason}`
-          );
-        } else {
-          // Other payout events can be logged and ignored, e.g., payout.created, payout.processed etc.
-          logger.info(`Unhandled payout event: ${event}`);
-        }
       }
       // ---------------REFUND EVENTS--------------
       else if (event.startsWith("refund.")) {

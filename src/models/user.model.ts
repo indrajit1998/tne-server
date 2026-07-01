@@ -63,6 +63,7 @@ const BankDetailsSchema = new Schema<BankDetails>(
   {
     accountHolderName: { type: String, required: true },
     accountNumber: { type: String, required: true }, // masked like "****1234"
+    accountNumberEncrypted: { type: String },
     ifscCode: { type: String, required: true },
     bankName: { type: String, required: true },
     branch: { type: String, required: true },

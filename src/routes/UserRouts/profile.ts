@@ -7,6 +7,7 @@ import {
   getUserBankDetails,
   getUserEarnings,
   getUserFundAccounts,
+  getUserPayouts,
   saveUserBankDetails,
   updateUserProfile,
   withdrawFunds,
@@ -38,6 +39,7 @@ profileRouter.put("/bankDetails", isAuthMiddleware, saveUserBankDetails);
 profileRouter.get("/fundAccounts", isAuthMiddleware, getUserFundAccounts);
 profileRouter.post("/addFundAccount", isAuthMiddleware, addFundAccount);
 profileRouter.put("/withdrawFunds", isAuthMiddleware, withdrawFunds);
+profileRouter.get("/payouts", isAuthMiddleware, getUserPayouts);
 profileRouter.get("/earnings", isAuthMiddleware, getUserEarnings);
 
 export default profileRouter;

@@ -28,6 +28,7 @@ const payoutAccountsSchema = new Schema<PayoutAccounts>(
     bankName: { type: String }, // optional for VPA
     branch: { type: String }, // optional for VPA
     accountNumber: { type: String }, // masked for frontend
+    accountNumberEncrypted: { type: String },
     accountHash: { type: String, required: true }, // hash
     vpa: { type: String }, // masked for frontend
   },
