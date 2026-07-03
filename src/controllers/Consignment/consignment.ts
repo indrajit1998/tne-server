@@ -35,6 +35,7 @@ import {
   emitPaymentRequest,
 } from "../../socket/events";
 import { notificationHelper } from "../Notifications/notification";
+import { notifyUser } from "../../lib/pushNotification";
 import { removeLocation } from "../../socket/locationStore";
 import {
   removeTrackingMeta,
@@ -694,6 +695,13 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       requestId: carryRequestBySender._id,
       relatedTravelId: travelId,
     });
+    
+    // Send push notification to the traveller
+    await notifyUser(travel.travelerId, title, message, {
+      type: typeOfNotif,
+      consignmentId: consignment._id,
+      requestId: carryRequestBySender._id
+    });
     if (!notification) {
       return res
         .status(500)
@@ -813,6 +821,13 @@ export const carryRequestByTraveller = async (
       relatedConsignmentId: consignment._id,
       requestId: carryRequestByTraveller._id,
       relatedTravelId: travelId,
+    });
+    
+    // Send push notification to the sender
+    await notifyUser(consignmentSenderId, title, message, {
+      type: typeOfNotif,
+      consignmentId: consignment._id,
+      requestId: carryRequestByTraveller._id
     });
     console.log(notification);
 
@@ -1072,6 +1087,12 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
       requestId: carryRequest._id,
       relatedTravelId: travelId,
     });
+    
+    // Send push notification to the sender to proceed with payment
+    await notifyUser(consignment.senderId, notificationData.title, notificationData.message, {
+      consignmentId: consignment._id,
+      requestId: carryRequest._id
+    });
 
     await emitPaymentRequest((sender._id as Types.ObjectId).toString(), {
       consignmentId: consignment._id.toString(),
@@ -1324,6 +1345,11 @@ export const updateTravelConsignmentStatus = async (
         ],
         { session },
       );
+      
+      // Push notification for sender
+      await notifyUser(consignment.senderId, notifSender.title, notifSender.message, {
+        travelConsignmentId: travelConsignment._id
+      });
 
       // EMIT socket event
       // Notify sender
@@ -1427,6 +1453,11 @@ export const updateTravelConsignmentStatus = async (
         ],
         { session },
       );
+      
+      // Push notification for sender
+      await notifyUser(consignment.senderId, notifSender.title, notifSender.message, {
+        travelConsignmentId: travelConsignment._id
+      });
 
       // EMIT socket event
 

@@ -11,6 +11,7 @@ import {
   saveUserBankDetails,
   updateUserProfile,
   withdrawFunds,
+  updateExpoPushToken,
 } from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
 
@@ -29,6 +30,7 @@ profileRouter.patch(
 );
 
 profileRouter.patch("/update", isAuthMiddleware, updateUserProfile);
+profileRouter.patch("/updateExpoPushToken", isAuthMiddleware, updateExpoPushToken);
 
 // Bank Details Routes
 profileRouter.get("/bankDetails", isAuthMiddleware, getUserBankDetails);

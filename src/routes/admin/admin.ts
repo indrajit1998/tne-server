@@ -9,6 +9,7 @@ import { getConsolidateConsignment, getSalesReport, getSenderReport, getTravelle
 import {getFeedback, getSupportContacts} from "../../controllers/admin/feedbackAndContacts";
 import { initiateRefund } from "../../controllers/Payment/refund.payments";
 import { getPayouts, updatePayoutStatus, exportPayouts } from "../../controllers/admin/payoutManagement";
+import { getRefunds, updateRefundStatus, exportRefunds } from "../../controllers/admin/refundManagement";
 
 const adminRouts = Router();
 adminRouts.post("/adminLogin", adminLogin)
@@ -51,6 +52,11 @@ adminRouts.post("/cancelTravel/:travelId", adminCancelTravel);
 adminRouts.get("/payouts", getPayouts);
 adminRouts.patch("/payouts/:id/status", updatePayoutStatus);
 adminRouts.get("/payouts/export", exportPayouts);
+
+//Refund Management
+adminRouts.get("/refunds", getRefunds);
+adminRouts.patch("/refunds/:id/status", updateRefundStatus);
+adminRouts.get("/refunds/export", exportRefunds);
 
 //Payment Refund
 adminRouts.post("/initiateRefund/:consignmentId", initiateRefund);

@@ -57,6 +57,9 @@ export interface User extends Document {
 
   // KYC info
   kyc: KYC;
+
+  // Push notifications
+  expoPushToken?: string;
 }
 
 const BankDetailsSchema = new Schema<BankDetails>(
@@ -143,6 +146,7 @@ const UserSchema = new Schema<User>(
       },
       default: {},
     },
+    expoPushToken: { type: String },
   },
   { timestamps: true }
 );

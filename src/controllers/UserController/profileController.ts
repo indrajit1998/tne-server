@@ -1021,3 +1021,37 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
       );
   }
 };
+
+export const updateExpoPushToken = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    const { expoPushToken } = req.body;
+
+    if (!expoPushToken) {
+      return res.status(CODES.BAD_REQUEST).json(
+        sendResponse(CODES.BAD_REQUEST, null, "expoPushToken is required")
+      );
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { expoPushToken } },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(CODES.NOT_FOUND).json(
+        sendResponse(CODES.NOT_FOUND, null, "User not found")
+      );
+    }
+
+    return res.status(CODES.OK).json(
+      sendResponse(CODES.OK, null, "Expo push token updated successfully")
+    );
+  } catch (error: any) {
+    logger.error("Error updating Expo push token: " + error.message);
+    return res.status(CODES.INTERNAL_SERVER_ERROR).json(
+      sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Internal server error")
+    );
+  }
+};

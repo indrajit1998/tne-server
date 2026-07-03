@@ -1,8 +1,8 @@
 import type { Response } from "express";
 import mongoose from "mongoose";
 import type { AdminAuthRequest } from "../../middlewares/adminAuthMiddleware";
-import Earning from "../../models/earning.model";
-import { Payout } from "../../models/payout.model";
+import { Refund } from "../../models/refund.model";
+import Payment from "../../models/payment.model";
 import { User } from "../../models/user.model";
 import { decrypt } from "../../lib/encryption.js";
 import logger from "../../lib/logger.js";
@@ -10,7 +10,7 @@ import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
 import { notifyUser } from "../../lib/pushNotification";
 
-export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
+export const getRefunds = async (req: AdminAuthRequest, res: Response) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const pageNum = parseInt(page as string) || 1;
@@ -22,9 +22,9 @@ export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
       query.status = status;
     }
 
-    const [total, payouts] = await Promise.all([
-      Payout.countDocuments(query),
-      Payout.find(query)
+    const [total, refunds] = await Promise.all([
+      Refund.countDocuments(query),
+      Refund.find(query)
         .populate("userId", "firstName lastName email phoneNumber bankDetails")
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -32,8 +32,8 @@ export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
         .lean(),
     ]);
 
-    const enrichedPayouts = payouts.map((payout: any) => {
-      const user = payout.userId;
+    const enrichedRefunds = refunds.map((refund: any) => {
+      const user = refund.userId;
       let decryptedAccountNumber = "";
       if (user?.bankDetails?.accountNumberEncrypted) {
         try {
@@ -46,7 +46,7 @@ export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
       }
 
       return {
-        ...payout,
+        ...refund,
         user: user ? {
           _id: user._id,
           firstName: user.firstName,
@@ -69,119 +69,87 @@ export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
         total,
         currentPage: pageNum,
         totalPages: Math.ceil(total / limitNum),
-        data: enrichedPayouts,
-      }, "Payouts fetched successfully")
+        data: enrichedRefunds,
+      }, "Refunds fetched successfully")
     );
   } catch (error) {
-    logger.error("Error fetching payouts: " + error);
+    logger.error("Error fetching refunds: " + error);
     return res.status(CODES.INTERNAL_SERVER_ERROR).json(
       sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
     );
   }
 };
 
-export const updatePayoutStatus = async (req: AdminAuthRequest, res: Response) => {
+export const updateRefundStatus = async (req: AdminAuthRequest, res: Response) => {
   const session = await mongoose.startSession();
   try {
     const { id } = req.params;
     const { status, comment } = req.body;
 
-    if (status !== undefined && !["pending", "initiated", "paid", "rejected"].includes(status)) {
+    if (status !== undefined && !["pending", "initiated", "processed", "rejected"].includes(status)) {
       return res.status(CODES.BAD_REQUEST).json(
         sendResponse(CODES.BAD_REQUEST, null, "Invalid status")
       );
     }
 
-    const payout = await Payout.findById(id).session(session);
-    if (!payout) {
+    const refund = await Refund.findById(id).session(session);
+    if (!refund) {
       return res.status(CODES.NOT_FOUND).json(
-        sendResponse(CODES.NOT_FOUND, null, "Payout request not found")
+        sendResponse(CODES.NOT_FOUND, null, "Refund request not found")
       );
     }
 
     session.startTransaction();
 
-    const previousStatus = payout.status;
+    const previousStatus = refund.status;
 
     if (status !== undefined) {
-      payout.status = status;
+      refund.status = status;
     }
     if (comment !== undefined) {
-      payout.comment = comment;
+      refund.comment = comment;
     }
 
-    await payout.save({ session });
+    await refund.save({ session });
 
-    // Only apply transaction actions if status has actually changed
+    // Update the associated payment if status changed
     if (status !== undefined && status !== previousStatus) {
-      if (status === "paid") {
-        // Mark all linked earnings as withdrawn
-        await Earning.updateMany(
-          { _id: { $in: payout.earningIds } },
-          {
-            $set: {
-              is_withdrawn: true,
-              withdrawnAt: new Date(),
-              payoutPending: false,
-            },
-          },
-          { session }
-        );
-      } else if (status === "rejected") {
-        // Revert earnings back to available for withdrawal
-        await Earning.updateMany(
-          { _id: { $in: payout.earningIds } },
-          {
-            $set: { payoutPending: false },
-            $unset: { payoutId: "" },
-          },
-          { session }
-        );
-      } else if (previousStatus === "rejected" && (status === "pending" || status === "initiated")) {
-        // If it was rejected previously, and is re-opened/re-initiated, we link them back
-        await Earning.updateMany(
-          { _id: { $in: payout.earningIds } },
-          {
-            $set: {
-              payoutPending: true,
-              payoutId: payout._id
-            }
-          },
-          { session }
-        );
-      } else if (previousStatus === "paid" && (status === "pending" || status === "initiated" || status === "rejected")) {
-        // If it was paid previously, and is reverted, we reset the earnings is_withdrawn
-        await Earning.updateMany(
-          { _id: { $in: payout.earningIds } },
-          {
-            $set: {
-              is_withdrawn: false,
-              payoutPending: status !== "rejected",
-            },
-            ...(status === "rejected" ? { $unset: { payoutId: "" } } : { $set: { payoutId: payout._id } })
-          },
-          { session }
-        );
+      const payment = await Payment.findById(refund.paymentId).session(session);
+      if (payment) {
+        if (status === "processed") {
+          payment.status = "refunded";
+          if (payment.refundDetails) payment.refundDetails.status = "processed";
+        } else if (status === "rejected") {
+          // If refund is rejected, payment is still marked as completed or maybe we just leave it refund_pending/completed
+          // Typically if rejected, it means refund not possible. Let's revert payment status to completed
+          payment.status = "completed";
+          if (payment.refundDetails) payment.refundDetails.status = "failed";
+        } else if (status === "pending" || status === "initiated") {
+          payment.status = "refund_pending";
+          if (payment.refundDetails) payment.refundDetails.status = "pending";
+        }
+        await payment.save({ session });
       }
     }
 
     await session.commitTransaction();
-    logger.info(`Payout ID: ${id} updated (Status: ${payout.status}, Comment: ${payout.comment})`);
+    logger.info(`Refund ID: ${id} updated (Status: ${refund.status}, Comment: ${refund.comment})`);
     
+    // Notifications
     if (status !== undefined && status !== previousStatus) {
-      let message = `Your payout status is now ${status}.`;
-      if (status === "paid") message = `Your payout of ₹${payout.amount} has been paid successfully.`;
-      if (status === "rejected") message = `Your payout of ₹${payout.amount} was rejected.`;
+      let message = `Your refund status is now ${status}.`;
+      if (status === "processed") message = `Your refund of ₹${refund.amount} has been processed successfully.`;
+      if (status === "rejected") message = `Your refund of ₹${refund.amount} was rejected.`;
       
-      await notifyUser(payout.userId, "Payout Status Updated", message);
+      await notifyUser(refund.userId.toString(), "Refund Status Updated", message);
     }
 
     return res.status(CODES.OK).json(
-      sendResponse(CODES.OK, payout, "Payout request updated successfully")
+      sendResponse(CODES.OK, refund, "Refund request updated successfully")
     );
   } catch (error) {
     await session.abortTransaction();
-    logger.error("Error updating payout status: " + error);
+    logger.error("Error updating refund status: " + error);
     return res.status(CODES.INTERNAL_SERVER_ERROR).json(
       sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
     );
@@ -190,7 +158,7 @@ export const updatePayoutStatus = async (req: AdminAuthRequest, res: Response) =
   }
 };
 
-export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
+export const exportRefunds = async (req: AdminAuthRequest, res: Response) => {
   try {
     const { status } = req.query;
     const query: any = {};
@@ -198,15 +166,15 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
       query.status = status;
     }
 
-    const payouts = await Payout.find(query)
+    const refunds = await Refund.find(query)
       .populate("userId", "firstName lastName bankDetails")
       .sort({ createdAt: -1 })
       .lean();
 
-    let csvContent = "Payout ID,Customer Name,Account Holder Name,Bank Name,Account Number,IFSC,Branch,Amount,Status,Created At\n";
+    let csvContent = "Refund Request ID,Payment ID,Customer Name,Account Holder Name,Bank Name,Account Number,IFSC,Branch,Amount,Status,Created At\n";
 
-    for (const payout of payouts) {
-      const user: any = payout.userId;
+    for (const refund of refunds) {
+      const user: any = refund.userId;
       let decryptedAccountNumber = "";
       if (user?.bankDetails?.accountNumberEncrypted) {
         try {
@@ -223,13 +191,14 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
       const bankName = user?.bankDetails?.bankName || "";
       const ifscCode = user?.bankDetails?.ifscCode || "";
       const branch = user?.bankDetails?.branch || "";
-      const amount = payout.amount || 0;
-      const payoutStatus = payout.status;
-      const createdAt = payout.createdAt ? new Date(payout.createdAt).toISOString() : "";
+      const amount = refund.amount || 0;
+      const refundStatus = refund.status;
+      const createdAt = refund.createdAt ? new Date(refund.createdAt).toISOString() : "";
 
       // Escape quotes and wrap in quotes to prevent CSV injection / parsing issues
       const row = [
-        payout._id.toString(),
+        refund._id.toString(),
+        refund.paymentId?.toString() || "",
         `"${customerName.replace(/"/g, '""')}"`,
         `"${accountHolderName.replace(/"/g, '""')}"`,
         `"${bankName.replace(/"/g, '""')}"`,
@@ -237,7 +206,7 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
         `"${ifscCode.replace(/"/g, '""')}"`,
         `"${branch.replace(/"/g, '""')}"`,
         amount,
-        payoutStatus,
+        refundStatus,
         createdAt
       ].join(",");
 
@@ -245,10 +214,10 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
     }
 
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=payouts_${status || "all"}_export.csv`);
+    res.setHeader("Content-Disposition", `attachment; filename=refunds_${status || "all"}_export.csv`);
     return res.status(200).send(csvContent);
   } catch (error) {
-    logger.error("Error exporting payouts: " + error);
+    logger.error("Error exporting refunds: " + error);
     return res.status(CODES.INTERNAL_SERVER_ERROR).json(
       sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Something went wrong")
     );

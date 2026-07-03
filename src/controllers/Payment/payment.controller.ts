@@ -18,8 +18,7 @@ import PayoutAccountsModel from "../../models/payoutaccounts.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
 import { emitPaymentFailed, emitPaymentSuccess } from "../../socket/events";
-import { razorpayRefundWebhook } from "./refund.payments";
-
+import { notifyUser } from "../../lib/pushNotification";
 const normalizePhoneNumber = (phone: string): string => {
   // Remove all spaces and dashes
   let normalized = phone.replace(/[\s-]/g, "");
@@ -444,25 +443,32 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // ✅ FIX: Create Razorpay order BEFORE transaction
-    const orderResponse = await axios.post(
-      "https://api.razorpay.com/v1/orders",
-      {
-        amount: carryRequest.senderPayAmount * 100,
-        currency: "INR",
-        receipt: carryRequest._id.toString(),
-        payment_capture: 1,
-      },
-      {
-        auth: {
-          username: env.RAZORPAY_KEY_ID,
-          password: env.RAZORPAY_KEY_SECRET,
-        },
-        timeout: 10000,
-      }
-    );
+    let razorpayOrderId = `dev_order_${Date.now()}`;
+    let orderData = { id: razorpayOrderId, amount: carryRequest.senderPayAmount * 100, currency: "INR" };
 
-    logger.info("✅ Razorpay order created:", orderResponse.data.id);
+    if (env.NODE_ENV !== "development") {
+      const orderResponse = await axios.post(
+        "https://api.razorpay.com/v1/orders",
+        {
+          amount: carryRequest.senderPayAmount * 100,
+          currency: "INR",
+          receipt: carryRequest._id.toString(),
+          payment_capture: 1,
+        },
+        {
+          auth: {
+            username: env.RAZORPAY_KEY_ID,
+            password: env.RAZORPAY_KEY_SECRET,
+          },
+          timeout: 10000,
+        }
+      );
+      razorpayOrderId = orderResponse.data.id;
+      orderData = orderResponse.data;
+      logger.info("✅ Razorpay order created:", razorpayOrderId);
+    } else {
+      logger.info("✅ DEV MODE: Bypassed Razorpay order creation:", razorpayOrderId);
+    }
 
     // ✅ NOW start transaction and save to DB
     session.startTransaction();
@@ -479,7 +485,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
           type: "sender_pay",
           amount: carryRequest.senderPayAmount,
           status: "pending",
-          razorpayOrderId: orderResponse.data.id, // ✅ Correctly saved now
+          razorpayOrderId: razorpayOrderId, // ✅ Correctly saved now
           expiresAt,
         },
       ],
@@ -497,7 +503,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
 
     return res.status(200).json({
       message: "Payment initiated successfully",
-      order: orderResponse.data,
+      order: orderData,
       paymentId: paymentDoc._id,
       isRetry: false,
     });
@@ -669,18 +675,20 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const generatedSignature = crypto
-      .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
-      .update(`${payment.razorpayOrderId}|${razorpayPaymentId}`)
-      .digest("hex");
+    if (env.NODE_ENV !== "development") {
+      const generatedSignature = crypto
+        .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
+        .update(`${payment.razorpayOrderId}|${razorpayPaymentId}`)
+        .digest("hex");
 
-    logger.info("generatedSignature => " + generatedSignature);
-    logger.info("razorpaySignature => " + razorpaySignature);
+      logger.info("generatedSignature => " + generatedSignature);
+      logger.info("razorpaySignature => " + razorpaySignature);
 
-    if (generatedSignature !== razorpaySignature) {
-      return res
-        .status(400)
-        .json({ message: "Payment signature verification failed" });
+      if (generatedSignature !== razorpaySignature) {
+        return res
+          .status(400)
+          .json({ message: "Payment signature verification failed" });
+      }
     }
 
     session.startTransaction();
@@ -718,15 +726,17 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
     const signature = req.headers["x-razorpay-signature"] as string;
     const body = JSON.stringify(req.body);
 
-    // verify webhook signature
-    const expectedSignature = crypto
-      .createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET)
-      .update(body)
-      .digest("hex");
+    if (env.NODE_ENV !== "development") {
+      // verify webhook signature
+      const expectedSignature = crypto
+        .createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET)
+        .update(body)
+        .digest("hex");
 
-    if (signature !== expectedSignature) {
-      logger.warn("❌ Razorpay webhook signature mismatch");
-      return res.status(400).send("Invalid signature");
+      if (signature !== expectedSignature) {
+        logger.warn("❌ Razorpay webhook signature mismatch");
+        return res.status(400).send("Invalid signature");
+      }
     }
 
     const event = req.body.event;
@@ -1063,6 +1073,18 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             status: "completed",
           });
 
+          // Send push notifications
+          await notifyUser(
+            carryRequest.requestedBy, 
+            "Payment Successful", 
+            "Payment successful! The consignment is now officially assigned."
+          );
+          await notifyUser(
+            carryRequest.travellerId, 
+            "Consignment Assigned", 
+            "Payment successful! You are now officially assigned to carry the consignment."
+          );
+
           logger.info(
             `✅ Payment processed & commission recorded: ₹${platformCommission}`
           );
@@ -1125,13 +1147,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
         }
 
       }
-      // ---------------REFUND EVENTS--------------
-      else if (event.startsWith("refund.")) {
-        return await razorpayRefundWebhook(
-          request as unknown as AdminAuthRequest,
-          res
-        );
-      }
+      // Removed refund events handling since refund is manual now
 
       await session.commitTransaction();
       return res.status(200).send("Webhook processed successfully");
