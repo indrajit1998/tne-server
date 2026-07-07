@@ -16,7 +16,7 @@ async function deleteTestUsers() {
     logger.info("✅ Connected to MongoDB");
 
     const args = process.argv.slice(2);
-    // Use defaults from test_auth_flow.js if none provided
+
     const SENDER_PHONE = args[0] || "+917843835159";
     const TRAVELLER_PHONE = args[1] || "+917267011026";
 

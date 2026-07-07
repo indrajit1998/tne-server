@@ -403,7 +403,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
 
         if (timeRemaining > twoMinutesInMs) {
           logger.info(
-            `✅ Reusing existing payment order for carry request: ${carryRequestId}`
+            `✅ Reusing existing payment order for carry request: ${carryRequestId}`,
           );
           return res.status(200).json({
             message: "Resuming your previous payment",
@@ -444,32 +444,31 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
     }
 
     let razorpayOrderId = `dev_order_${Date.now()}`;
-    let orderData = { id: razorpayOrderId, amount: carryRequest.senderPayAmount * 100, currency: "INR" };
+    let orderData = {
+      id: razorpayOrderId,
+      amount: carryRequest.senderPayAmount * 100,
+      currency: "INR",
+    };
 
-    if (env.NODE_ENV !== "development") {
-      const orderResponse = await axios.post(
-        "https://api.razorpay.com/v1/orders",
-        {
-          amount: carryRequest.senderPayAmount * 100,
-          currency: "INR",
-          receipt: carryRequest._id.toString(),
-          payment_capture: 1,
+    const orderResponse = await axios.post(
+      "https://api.razorpay.com/v1/orders",
+      {
+        amount: carryRequest.senderPayAmount * 100,
+        currency: "INR",
+        receipt: carryRequest._id.toString(),
+        payment_capture: 1,
+      },
+      {
+        auth: {
+          username: env.RAZORPAY_KEY_ID,
+          password: env.RAZORPAY_KEY_SECRET,
         },
-        {
-          auth: {
-            username: env.RAZORPAY_KEY_ID,
-            password: env.RAZORPAY_KEY_SECRET,
-          },
-          timeout: 10000,
-        }
-      );
-      razorpayOrderId = orderResponse.data.id;
-      orderData = orderResponse.data;
-      logger.info("✅ Razorpay order created:", razorpayOrderId);
-    } else {
-      logger.info("✅ DEV MODE: Bypassed Razorpay order creation:", razorpayOrderId);
-    }
-
+        timeout: 10000,
+      },
+    );
+    razorpayOrderId = orderResponse.data.id;
+    orderData = orderResponse.data;
+    logger.info("✅ Razorpay order created:", razorpayOrderId);
     // ✅ NOW start transaction and save to DB
     session.startTransaction();
 
@@ -489,7 +488,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
           expiresAt,
         },
       ],
-      { session }
+      { session },
     );
 
     const paymentDoc = createdPayments[0];
@@ -498,7 +497,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
     await session.commitTransaction();
 
     logger.info(
-      `✅ Payment initiated successfully for carry request: ${carryRequestId}`
+      `✅ Payment initiated successfully for carry request: ${carryRequestId}`,
     );
 
     return res.status(200).json({
@@ -654,7 +653,7 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
       payment.razorpayPaymentId === razorpayPaymentId
     ) {
       logger.info(
-        `✅ Payment already verified, awaiting webhook: ${paymentId}`
+        `✅ Payment already verified, awaiting webhook: ${paymentId}`,
       );
       return res.status(200).json({
         message: "Payment already verified, awaiting webhook",
@@ -700,7 +699,7 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
       await payment.save({ session });
 
       logger.info(
-        `✅ Payment verified, status: completed_pending_webhook, awaiting webhook: ${paymentId}`
+        `✅ Payment verified, status: completed_pending_webhook, awaiting webhook: ${paymentId}`,
       );
     }
 
@@ -755,12 +754,12 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
 
         //find payment in payment model
         const payment = await Payment.findOne({ razorpayOrderId }).session(
-          session
+          session,
         );
         if (!payment) {
           logger.error(
             "Payment record not found for webhook order_id:",
-            razorpayOrderId
+            razorpayOrderId,
           );
           throw new Error("Payment record not found for webhook");
         }
@@ -774,13 +773,13 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
 
         if (event === "payment.captured") {
           logger.info(
-            `🎯 Processing payment.captured webhook for order: ${razorpayOrderId}`
+            `🎯 Processing payment.captured webhook for order: ${razorpayOrderId}`,
           );
 
           // ✅ Idempotency check: Skip if already completed
           if (payment.status === "completed") {
             logger.info(
-              `✅ Payment already completed, skipping webhook processing: ${razorpayOrderId}`
+              `✅ Payment already completed, skipping webhook processing: ${razorpayOrderId}`,
             );
             await session.abortTransaction();
             return res.status(200).send("Payment already processed");
@@ -792,7 +791,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           await payment.save({ session });
 
           logger.info(
-            `✅ Payment status updated to COMPLETED: ${razorpayOrderId}`
+            `✅ Payment status updated to COMPLETED: ${razorpayOrderId}`,
           );
           logger.info(`   Payment ID: ${payment._id}`);
           logger.info(`   Razorpay Payment ID: ${razorpayPaymentId}`);
@@ -806,7 +805,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
               status: "accepted_pending_payment",
             },
             { status: "accepted" },
-            { new: true, session }
+            { new: true, session },
           );
           if (!carryRequest) {
             logger.error("❌ CarryRequest not found or already processed");
@@ -826,7 +825,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
               status: "rejected",
               // rejectionReason: "Another traveller was selected", // Optional field
             },
-            { session }
+            { session },
           );
 
           logger.info(`✅ Auto-rejected other carry requests for consignment`);
@@ -842,7 +841,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                 assignedAt: new Date(),
               },
             },
-            { new: true, session }
+            { new: true, session },
           );
 
           if (!updatedConsignment) {
@@ -860,7 +859,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           const { margin } = fareConfig; // percentage margin
 
           const platformCommission = Number(
-            ((carryRequest.senderPayAmount * margin) / 100).toFixed(2)
+            ((carryRequest.senderPayAmount * margin) / 100).toFixed(2),
           );
 
           // ✅ Better idempotency check: Check by consignment + travel combination
@@ -874,7 +873,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             logger.info("🔍 Fetching consignment for OTP generation...");
 
             const consignment = await ConsignmentModel.findById(
-              payment.consignmentId
+              payment.consignmentId,
             )
               .select("receiverPhone receiverName senderId")
               .lean()
@@ -907,7 +906,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             // Normalize all phone numbers
             const senderPhone = normalizePhoneNumber(sender.phoneNumber);
             const receiverPhone = normalizePhoneNumber(
-              consignment.receiverPhone
+              consignment.receiverPhone,
             );
             const travellerPhone = normalizePhoneNumber(traveller.phoneNumber);
 
@@ -920,25 +919,25 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             // Validation check
             if (receiverPhone === travellerPhone) {
               logger.error(
-                "❌ CRITICAL ERROR: Receiver phone matches traveller phone!"
+                "❌ CRITICAL ERROR: Receiver phone matches traveller phone!",
               );
               logger.error(
-                "This should NEVER happen. The consignment data is corrupted."
+                "This should NEVER happen. The consignment data is corrupted.",
               );
               throw new Error(
-                "Invalid consignment: receiver phone cannot be traveller's phone"
+                "Invalid consignment: receiver phone cannot be traveller's phone",
               );
             }
 
             if (senderPhone === travellerPhone) {
               logger.error(
-                "❌ CRITICAL ERROR: Sender phone matches traveller phone!"
+                "❌ CRITICAL ERROR: Sender phone matches traveller phone!",
               );
               logger.error(
-                "This indicates carryRequest.requestedBy is pointing to traveller instead of sender."
+                "This indicates carryRequest.requestedBy is pointing to traveller instead of sender.",
               );
               throw new Error(
-                "Invalid carry request: sender cannot be the traveller"
+                "Invalid carry request: sender cannot be the traveller",
               );
             }
 
@@ -946,18 +945,20 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             const samePersonSendingAndReceiving = senderPhone === receiverPhone;
             if (samePersonSendingAndReceiving) {
               logger.info(
-                "📦 Same person is sender and receiver (self-delivery)"
+                "📦 Same person is sender and receiver (self-delivery)",
               );
               logger.info("   Both OTPs will go to: " + senderPhone);
             } else {
               logger.info("📦 Different sender and receiver:");
               logger.info(
-                `   Sender OTP → ${senderPhone} (${sender.firstName || "Unknown"
-                })`
+                `   Sender OTP → ${senderPhone} (${
+                  sender.firstName || "Unknown"
+                })`,
               );
               logger.info(
-                `   Receiver OTP → ${receiverPhone} (${consignment.receiverName || "Unknown"
-                })`
+                `   Receiver OTP → ${receiverPhone} (${
+                  consignment.receiverName || "Unknown"
+                })`,
               );
             }
 
@@ -1004,7 +1005,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                     paymentId: payment._id,
                   },
                 ],
-                { session }
+                { session },
               );
             } catch (err) {
               console.error("❌ Failed to create TravelConsignment:", err);
@@ -1031,7 +1032,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                     is_withdrawn: false,
                   },
                 ],
-                { session }
+                { session },
               );
             } catch (error) {
               console.error("❌ Failed to create Earning record:", error);
@@ -1054,12 +1055,12 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
                     razorpayPaymentId: razorpayPaymentId,
                   },
                 ],
-                { session }
+                { session },
               );
             } catch (error) {
               logger.error(
                 "❌ Failed to create platform commission payment record:" +
-                error
+                  error,
               );
             }
           }
@@ -1075,18 +1076,18 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
 
           // Send push notifications
           await notifyUser(
-            carryRequest.requestedBy, 
-            "Payment Successful", 
-            "Payment successful! The consignment is now officially assigned."
+            carryRequest.requestedBy,
+            "Payment Successful",
+            "Payment successful! The consignment is now officially assigned.",
           );
           await notifyUser(
-            carryRequest.travellerId, 
-            "Consignment Assigned", 
-            "Payment successful! You are now officially assigned to carry the consignment."
+            carryRequest.travellerId,
+            "Consignment Assigned",
+            "Payment successful! You are now officially assigned to carry the consignment.",
           );
 
           logger.info(
-            `✅ Payment processed & commission recorded: ₹${platformCommission}`
+            `✅ Payment processed & commission recorded: ₹${platformCommission}`,
           );
           // logger.info(`✅ Payment processed from webhook`);
 
@@ -1118,7 +1119,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           logger.info("Looking for payment in DB...");
 
           const payment = await Payment.findOne({ razorpayOrderId }).session(
-            session
+            session,
           );
           if (!payment)
             throw new Error("Payment record not found for failed webhook");
@@ -1145,7 +1146,6 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
 
           logger.warn(`⚠️ Payment failed for order ${razorpayOrderId}`);
         }
-
       }
       // Removed refund events handling since refund is manual now
 
