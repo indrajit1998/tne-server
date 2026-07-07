@@ -355,18 +355,14 @@ export const createRazorpayCustomerId = async (req: AuthRequest, res: Response) 
         .json(sendResponse(CODES.BAD_REQUEST, null, 'User email or name not found'));
     }
 
-    const razorpayCustomerId = await createRazorpayContactId(
-      `${user.firstName} ${user.lastName}`,
-      user.email,
-      user.phoneNumber,
-    );
+    const razorpayCustomerId = 'cust_' + uuidv4().replace(/-/g, '').slice(0, 14);
 
     user.razorpayCustomerId = razorpayCustomerId;
     await user.save();
 
     return res.status(CODES.OK).json(sendResponse(CODES.OK, { razorpayCustomerId }));
   } catch (error) {
-    logger.error('Error creating Razorpay customer ID:' + error);
+    logger.error('Error creating local customer ID:' + error);
     return res
       .status(CODES.INTERNAL_SERVER_ERROR)
       .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Something went wrong'));
@@ -500,18 +496,14 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
 
     session.startTransaction();
 
-    // Create Razorpay contact if not exists
+    // Create local mock Razorpay contact if not exists
     let razorpayContactId = user.razorpayCustomerId;
     if (!razorpayContactId) {
-      razorpayContactId = await createRazorpayContactId(
-        `${user.firstName} ${user.lastName}`,
-        user.email || '',
-        user.phoneNumber,
-      );
+      razorpayContactId = 'cust_' + uuidv4().replace(/-/g, '').slice(0, 14);
       user.razorpayCustomerId = razorpayContactId;
     }
 
-    // Create Razorpay fund account
+    // Create local mock fund account ID
     let razorpayFundAccountId: string | undefined;
 
     // Check if fund account already exists in PayoutAccounts
@@ -524,13 +516,8 @@ export const saveUserBankDetails = async (req: AuthRequest, res: Response) => {
     if (existingFundAccount) {
       razorpayFundAccountId = existingFundAccount.razorpayFundAccountId;
     } else {
-      // Create new fund account on Razorpay
-      razorpayFundAccountId = await createBankFundAccount(
-        razorpayContactId,
-        accountHolderName,
-        ifscCode.toUpperCase(),
-        accountNumber,
-      );
+      // Create local mock fund account ID
+      razorpayFundAccountId = 'fa_' + uuidv4().replace(/-/g, '').slice(0, 14);
 
       // Save to PayoutAccounts table
       await PayoutAccountsModel.create(
@@ -633,43 +620,12 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
         .json(sendResponse(CODES.BAD_REQUEST, null, 'User not found'));
     }
 
-    // ⚠️ NOTE: Misnamed field — 'razorpayCustomerId' is actually the Razorpay Contact ID
     let razorpayContactId = user.razorpayCustomerId;
 
     if (!razorpayContactId) {
-      // Automatically create Razorpay contact for this user
-      logger.info('Razorpay customer ID not found — creating new one...');
-
-      if (!user.email) {
-        // Optionally, you can generate a placeholder email if none exists
-        logger.warn('No user email found — using placeholder for Razorpay contact creation');
-      }
-
-      // Create Razorpay contact
-      try {
-        razorpayContactId = await createRazorpayContactId(
-          `${user.firstName} ${user.lastName}`,
-          user.email || '',
-          user.phoneNumber,
-        );
-
-        // Save in DB (field still named 'razorpayCustomerId')
-        user.razorpayCustomerId = razorpayContactId;
-        await user.save();
-
-        logger.info('Razorpay customer ID created:' + razorpayContactId);
-      } catch (err) {
-        logger.error('Failed to create Razorpay customer ID:' + err);
-        return res
-          .status(CODES.INTERNAL_SERVER_ERROR)
-          .json(
-            sendResponse(
-              CODES.INTERNAL_SERVER_ERROR,
-              null,
-              'Failed to create Razorpay customer ID',
-            ),
-          );
-      }
+      razorpayContactId = 'cust_' + uuidv4().replace(/-/g, '').slice(0, 14);
+      user.razorpayCustomerId = razorpayContactId;
+      await user.save();
     }
 
     const displayName = `${user.firstName} ${user.lastName}`;
@@ -713,15 +669,15 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
           };
         }
 
-        // Create fund account on Razorpay
-        fundAccountId = await createBankFundAccount(razorpayContactId, name, ifsc, accountNumber);
+        // Create local mock fund account ID
+        fundAccountId = 'fa_' + uuidv4().replace(/-/g, '').slice(0, 14);
 
         // Save in PayoutAccounts
         const newAccount = await PayoutAccountsModel.create(
           [
             {
               userId,
-              razorpayContactId, // still named razorpayCustomerId in DB
+              razorpayContactId,
               razorpayFundAccountId: fundAccountId,
               displayName,
               accountType: 'bank_account',
@@ -759,9 +715,6 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
         const { vpa } = details;
         if (!vpa) throw { status: CODES.BAD_REQUEST, message: 'VPA is required' };
 
-        const isValidVpa = await validateVpa(vpa);
-        if (!isValidVpa.success) throw { status: CODES.BAD_REQUEST, message: 'Invalid VPA' };
-
         const vpaHash = crypto.createHash('sha256').update(vpa).digest('hex');
         maskedDetails.vpa = vpa.replace(/(.{2}).+(@.+)/, '$1***$2');
 
@@ -773,7 +726,8 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
 
         if (existing) throw { status: CODES.BAD_REQUEST, message: 'VPA already added' };
 
-        fundAccountId = await createVpaFundAccount(razorpayContactId, vpa);
+        // Create local mock fund account ID
+        fundAccountId = 'vpa_' + uuidv4().replace(/-/g, '').slice(0, 14);
 
         const newAccount = await PayoutAccountsModel.create(
           [
@@ -822,13 +776,9 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
   const session = await mongoose.startSession();
 
   try {
-    const { earningId, fundAccountId } = req.body;
     const rawUser = req.user;
     const userId =
       typeof rawUser === 'string' ? rawUser : (rawUser as JwtPayload & { _id: string })._id;
-
-    console.log('fundAccountId => ', fundAccountId);
-    console.log('earningId => ', earningId);
 
     if (!userId) {
       return res
@@ -836,164 +786,96 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
         .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
     }
 
-    // 1. Fetch earning
-    const earning = await Earning.findById(earningId).session(session);
-    if (!earning) {
+    // 1. Fetch user to check bankDetails
+    const user = await User.findById(userId).session(session);
+    if (!user || !user.bankDetails) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, 'Earning not found'));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Please add bank details before withdrawing funds'));
     }
 
-    if (String(earning.userId) !== String(userId)) {
-      return res
-        .status(CODES.FORBIDDEN)
-        .json(sendResponse(CODES.FORBIDDEN, null, 'Not owner of this earning'));
-    }
+    const bankDetails = user.bankDetails;
 
-    if (earning.is_withdrawn) {
-      return res
-        .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, 'Already withdrawn'));
-    }
-
-    if (earning.status !== 'completed') {
-      return res
-        .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, 'Earning not completed'));
-    }
-
-    const amount = Number(earning.amount || 0);
-    if (amount <= 0) {
-      return res
-        .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid amount'));
-    }
-
-    // 2. Fetch user's fund account
-    const fundAccount = await PayoutAccountsModel.findOne({
+    // 2. Fetch all completed, not withdrawn, and not currently pending earnings
+    const earnings = await Earning.find({
       userId,
-      razorpayFundAccountId: fundAccountId,
+      status: 'completed',
+      is_withdrawn: false,
+      payoutId: { $exists: false },
     }).session(session);
-    if (!fundAccount) {
+
+    if (!earnings || earnings.length === 0) {
       return res
         .status(CODES.BAD_REQUEST)
-        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid or missing fund account'));
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'No earnings available for withdrawal'));
     }
 
-    // 3. Start transaction
+    const totalAmount = earnings.reduce((sum, e) => sum + (e.amount || 0), 0);
+    if (totalAmount <= 0) {
+      return res
+        .status(CODES.BAD_REQUEST)
+        .json(sendResponse(CODES.BAD_REQUEST, null, 'Invalid available amount for withdrawal'));
+    }
+
     let localPayout: any;
+
+    // 3. Start transaction to link earnings and create Payout request
     await session.withTransaction(async () => {
-      // Mark earning as payoutPending
-      const updated = await Earning.findOneAndUpdate(
-        { _id: earning._id, is_withdrawn: false, payoutId: { $exists: false } },
+      const clientPayoutId = uuidv4();
+      const earningIds = earnings.map(e => e._id);
+
+      // Mark earnings as payoutPending
+      await Earning.updateMany(
+        { _id: { $in: earningIds } },
         { $set: { payoutPending: true } },
-        { new: true, session },
+        { session }
       );
 
-      if (!updated) throw new Error('Earning already linked or withdrawn');
-
-      // Create local payout
-      const clientPayoutId = uuidv4();
+      // Create manual Payout record
       const payoutDoc = await Payout.create(
         [
           {
             userId: new mongoose.Types.ObjectId(userId),
-            travelId: earning.travelId ?? undefined,
-            consignmentId: earning.consignmentId ?? undefined,
-            amount,
+            amount: totalAmount,
             status: 'pending',
-            razorpayPayoutId: '',
             clientPayoutId,
-            earningIds: [earning._id],
+            earningIds,
+            notes: {
+              accountHolderName: bankDetails.accountHolderName,
+              bankName: bankDetails.bankName,
+              ifscCode: bankDetails.ifscCode,
+              maskedAccountNumber: bankDetails.accountNumber,
+            },
           },
         ],
-        { session },
+        { session }
       );
 
-      if (!payoutDoc || !payoutDoc[0]) throw new Error('Failed to create local payout record');
+      if (!payoutDoc || !payoutDoc[0]) {
+        throw new Error('Failed to create payout record');
+      }
 
       localPayout = payoutDoc[0];
 
-      // Link earning -> payoutId
-      await Earning.updateOne(
-        { _id: earning._id },
+      // Link earnings -> payoutId
+      await Earning.updateMany(
+        { _id: { $in: earningIds } },
         { $set: { payoutId: localPayout._id } },
-        { session },
+        { session }
       );
     });
 
-    // 4. Prepare Razorpay notes
-    const notes: Record<string, string> = {
-      userId: String(userId),
-      payoutId: String(localPayout.clientPayoutId),
-      earningIds: JSON.stringify([String(earning._id)]),
-      consignmentId: earning.consignmentId ? String(earning.consignmentId) : '',
-      travelId: earning.travelId ? String(earning.travelId) : '',
-    };
-
-    logger.info('Creating Razorpay payout with notes: ' + JSON.stringify(notes));
-
-    // 5. Call Razorpay
-    let razorpayResponse;
-    try {
-      razorpayResponse = await createPayout(fundAccount.razorpayFundAccountId, amount, {
-        notes,
-        idempotencyKey: localPayout.clientPayoutId.toString(),
-        mode: fundAccount.accountType === 'vpa' ? 'UPI' : 'IMPS',
-      });
-    } catch (err: any) {
-      logger.error('Razorpay create payout failed:', err.message || JSON.stringify(err));
-
-      // Mark payout failed and revert earning
-      await Payout.findByIdAndUpdate(localPayout._id, {
-        status: 'failed',
-        failureReason: err.message || 'Razorpay create failed',
-      });
-
-      await Earning.updateOne(
-        { _id: earning._id },
-        {
-          $unset: { payoutPending: true, payoutId: '' },
-          $set: { is_withdrawn: false },
-        },
-      );
-
-      return res
-        .status(CODES.INTERNAL_SERVER_ERROR)
-        .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Payout failed'));
-    }
-
-    // 6. Update local payout with Razorpay ID
-    await Payout.findByIdAndUpdate(localPayout._id, {
-      $set: {
-        razorpayPayoutId: razorpayResponse?.id,
-        status: 'processing',
-        notes,
-      },
-    });
-
-    // 7. Record Payment
-    const payment = await Payment.create({
-      userId: new mongoose.Types.ObjectId(userId),
-      travelId: earning.travelId,
-      consignmentId: earning.consignmentId,
-      amount,
-      status: 'pending',
-      type: 'traveller_earning',
-      razorpayPaymentId: razorpayResponse?.id,
-    });
-
-    logger.info('Withdraw request created successfully for userId:' + userId);
+    logger.info('Withdraw manual request created successfully for userId: ' + userId + ' amount: ' + totalAmount);
 
     return res.status(CODES.CREATED).json(
       sendResponse(CODES.CREATED, {
         payout: {
           id: localPayout._id,
-          razorpayPayoutId: razorpayResponse?.id,
-          status: 'processing',
+          amount: totalAmount,
+          status: 'pending',
+          createdAt: localPayout.createdAt,
         },
-        payment,
-      }),
+      }, 'Withdrawal request submitted successfully')
     );
   } catch (error) {
     logger.error('Error withdrawing funds: ' + error);
@@ -1002,6 +884,33 @@ export const withdrawFunds = async (req: AuthRequest, res: Response) => {
       .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Something went wrong'));
   } finally {
     session.endSession();
+  }
+};
+
+export const getUserPayouts = async (req: AuthRequest, res: Response) => {
+  try {
+    const rawUser = req.user;
+    const userId =
+      typeof rawUser === 'string' ? rawUser : (rawUser as JwtPayload & { _id: string })._id;
+
+    if (!userId) {
+      return res
+        .status(CODES.UNAUTHORIZED)
+        .json(sendResponse(CODES.UNAUTHORIZED, null, 'Unauthorized'));
+    }
+
+    const payouts = await Payout.find({ userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(CODES.OK).json(
+      sendResponse(CODES.OK, payouts, 'User payouts fetched successfully')
+    );
+  } catch (error) {
+    logger.error('Error fetching user payouts: ' + error);
+    return res
+      .status(CODES.INTERNAL_SERVER_ERROR)
+      .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Something went wrong'));
   }
 };
 
@@ -1110,5 +1019,39 @@ export const getUserEarnings = async (req: AuthRequest, res: Response) => {
           'Internal server error while fetching earnings',
         ),
       );
+  }
+};
+
+export const updateExpoPushToken = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user;
+    const { expoPushToken } = req.body;
+
+    if (!expoPushToken) {
+      return res.status(CODES.BAD_REQUEST).json(
+        sendResponse(CODES.BAD_REQUEST, null, "expoPushToken is required")
+      );
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { expoPushToken } },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(CODES.NOT_FOUND).json(
+        sendResponse(CODES.NOT_FOUND, null, "User not found")
+      );
+    }
+
+    return res.status(CODES.OK).json(
+      sendResponse(CODES.OK, null, "Expo push token updated successfully")
+    );
+  } catch (error: any) {
+    logger.error("Error updating Expo push token: " + error.message);
+    return res.status(CODES.INTERNAL_SERVER_ERROR).json(
+      sendResponse(CODES.INTERNAL_SERVER_ERROR, null, "Internal server error")
+    );
   }
 };

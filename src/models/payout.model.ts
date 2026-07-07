@@ -5,13 +5,14 @@ export interface PayoutT {
   travelId?: Types.ObjectId;
   consignmentId?: Types.ObjectId;
   amount: number;
-  status: "pending" | "completed" | "failed";
-  razorpayPayoutId: string;
+  status: "pending" | "initiated" | "paid" | "rejected";
+  razorpayPayoutId?: string;
   razorpayPaymentId?: string;
   failureReason?: string;
   clientPayoutId: string;
   earningIds: Types.ObjectId[];
   notes?: any;
+  comment?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -33,13 +34,14 @@ const payoutSchema = new Schema<PayoutDoc>(
     earningIds: [{ type: Schema.Types.ObjectId, ref: "Earning" }],
     status: {
       type: String,
-      enum: ["pending", "processing", "completed", "failed"],
+      enum: ["pending", "initiated", "paid", "rejected"],
       default: "pending",
       required: true,
     },
     razorpayPaymentId: { type: String },
     failureReason: { type: String },
     notes: { type: Schema.Types.Mixed },
+    comment: { type: String, default: "" },
   },
   { timestamps: true }
 );

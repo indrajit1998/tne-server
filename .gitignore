@@ -6,6 +6,11 @@ out
 dist
 *.tgz
 
+# Ignore test scripts
+test*.js
+test*.ts
+test*.json
+
 # code coverage
 coverage
 *.lcov
@@ -34,3 +39,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 *.txt
+
+
+

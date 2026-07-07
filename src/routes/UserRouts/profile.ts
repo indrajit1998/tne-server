@@ -7,9 +7,11 @@ import {
   getUserBankDetails,
   getUserEarnings,
   getUserFundAccounts,
+  getUserPayouts,
   saveUserBankDetails,
   updateUserProfile,
   withdrawFunds,
+  updateExpoPushToken,
 } from "../../controllers/UserController/profileController.js";
 import isAuthMiddleware from "../../middlewares/authMiddleware.js";
 
@@ -28,6 +30,7 @@ profileRouter.patch(
 );
 
 profileRouter.patch("/update", isAuthMiddleware, updateUserProfile);
+profileRouter.patch("/updateExpoPushToken", isAuthMiddleware, updateExpoPushToken);
 
 // Bank Details Routes
 profileRouter.get("/bankDetails", isAuthMiddleware, getUserBankDetails);
@@ -38,6 +41,7 @@ profileRouter.put("/bankDetails", isAuthMiddleware, saveUserBankDetails);
 profileRouter.get("/fundAccounts", isAuthMiddleware, getUserFundAccounts);
 profileRouter.post("/addFundAccount", isAuthMiddleware, addFundAccount);
 profileRouter.put("/withdrawFunds", isAuthMiddleware, withdrawFunds);
+profileRouter.get("/payouts", isAuthMiddleware, getUserPayouts);
 profileRouter.get("/earnings", isAuthMiddleware, getUserEarnings);
 
 export default profileRouter;

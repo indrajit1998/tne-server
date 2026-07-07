@@ -18,8 +18,7 @@ import PayoutAccountsModel from "../../models/payoutaccounts.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
 import { emitPaymentFailed, emitPaymentSuccess } from "../../socket/events";
-import { razorpayRefundWebhook } from "./refund.payments";
-
+import { notifyUser } from "../../lib/pushNotification";
 const normalizePhoneNumber = (phone: string): string => {
   // Remove all spaces and dashes
   let normalized = phone.replace(/[\s-]/g, "");
@@ -444,25 +443,32 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // ✅ FIX: Create Razorpay order BEFORE transaction
-    const orderResponse = await axios.post(
-      "https://api.razorpay.com/v1/orders",
-      {
-        amount: carryRequest.senderPayAmount * 100,
-        currency: "INR",
-        receipt: carryRequest._id.toString(),
-        payment_capture: 1,
-      },
-      {
-        auth: {
-          username: env.RAZORPAY_KEY_ID,
-          password: env.RAZORPAY_KEY_SECRET,
-        },
-        timeout: 10000,
-      }
-    );
+    let razorpayOrderId = `dev_order_${Date.now()}`;
+    let orderData = { id: razorpayOrderId, amount: carryRequest.senderPayAmount * 100, currency: "INR" };
 
-    logger.info("✅ Razorpay order created:", orderResponse.data.id);
+    if (env.NODE_ENV !== "development") {
+      const orderResponse = await axios.post(
+        "https://api.razorpay.com/v1/orders",
+        {
+          amount: carryRequest.senderPayAmount * 100,
+          currency: "INR",
+          receipt: carryRequest._id.toString(),
+          payment_capture: 1,
+        },
+        {
+          auth: {
+            username: env.RAZORPAY_KEY_ID,
+            password: env.RAZORPAY_KEY_SECRET,
+          },
+          timeout: 10000,
+        }
+      );
+      razorpayOrderId = orderResponse.data.id;
+      orderData = orderResponse.data;
+      logger.info("✅ Razorpay order created:", razorpayOrderId);
+    } else {
+      logger.info("✅ DEV MODE: Bypassed Razorpay order creation:", razorpayOrderId);
+    }
 
     // ✅ NOW start transaction and save to DB
     session.startTransaction();
@@ -479,7 +485,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
           type: "sender_pay",
           amount: carryRequest.senderPayAmount,
           status: "pending",
-          razorpayOrderId: orderResponse.data.id, // ✅ Correctly saved now
+          razorpayOrderId: razorpayOrderId, // ✅ Correctly saved now
           expiresAt,
         },
       ],
@@ -497,7 +503,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
 
     return res.status(200).json({
       message: "Payment initiated successfully",
-      order: orderResponse.data,
+      order: orderData,
       paymentId: paymentDoc._id,
       isRetry: false,
     });
@@ -669,18 +675,20 @@ export const capturePayment = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const generatedSignature = crypto
-      .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
-      .update(`${payment.razorpayOrderId}|${razorpayPaymentId}`)
-      .digest("hex");
+    if (env.NODE_ENV !== "development") {
+      const generatedSignature = crypto
+        .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
+        .update(`${payment.razorpayOrderId}|${razorpayPaymentId}`)
+        .digest("hex");
 
-    logger.info("generatedSignature => " + generatedSignature);
-    logger.info("razorpaySignature => " + razorpaySignature);
+      logger.info("generatedSignature => " + generatedSignature);
+      logger.info("razorpaySignature => " + razorpaySignature);
 
-    if (generatedSignature !== razorpaySignature) {
-      return res
-        .status(400)
-        .json({ message: "Payment signature verification failed" });
+      if (generatedSignature !== razorpaySignature) {
+        return res
+          .status(400)
+          .json({ message: "Payment signature verification failed" });
+      }
     }
 
     session.startTransaction();
@@ -718,15 +726,17 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
     const signature = req.headers["x-razorpay-signature"] as string;
     const body = JSON.stringify(req.body);
 
-    // verify webhook signature
-    const expectedSignature = crypto
-      .createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET)
-      .update(body)
-      .digest("hex");
+    if (env.NODE_ENV !== "development") {
+      // verify webhook signature
+      const expectedSignature = crypto
+        .createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET)
+        .update(body)
+        .digest("hex");
 
-    if (signature !== expectedSignature) {
-      logger.warn("❌ Razorpay webhook signature mismatch");
-      return res.status(400).send("Invalid signature");
+      if (signature !== expectedSignature) {
+        logger.warn("❌ Razorpay webhook signature mismatch");
+        return res.status(400).send("Invalid signature");
+      }
     }
 
     const event = req.body.event;
@@ -942,13 +952,11 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             } else {
               logger.info("📦 Different sender and receiver:");
               logger.info(
-                `   Sender OTP → ${senderPhone} (${
-                  sender.firstName || "Unknown"
+                `   Sender OTP → ${senderPhone} (${sender.firstName || "Unknown"
                 })`
               );
               logger.info(
-                `   Receiver OTP → ${receiverPhone} (${
-                  consignment.receiverName || "Unknown"
+                `   Receiver OTP → ${receiverPhone} (${consignment.receiverName || "Unknown"
                 })`
               );
             }
@@ -1051,7 +1059,7 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             } catch (error) {
               logger.error(
                 "❌ Failed to create platform commission payment record:" +
-                  error
+                error
               );
             }
           }
@@ -1064,6 +1072,18 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
             amount: payment.amount,
             status: "completed",
           });
+
+          // Send push notifications
+          await notifyUser(
+            carryRequest.requestedBy, 
+            "Payment Successful", 
+            "Payment successful! The consignment is now officially assigned."
+          );
+          await notifyUser(
+            carryRequest.travellerId, 
+            "Consignment Assigned", 
+            "Payment successful! You are now officially assigned to carry the consignment."
+          );
 
           logger.info(
             `✅ Payment processed & commission recorded: ₹${platformCommission}`
@@ -1126,172 +1146,8 @@ export const razorpayWebhook = async (req: AuthRequest, res: Response) => {
           logger.warn(`⚠️ Payment failed for order ${razorpayOrderId}`);
         }
 
-        // ================= PAYOUT EVENTS =================
       }
-      // ------------ PAYOUT EVENTS -------------
-      else if (event.startsWith("payout.")) {
-        const payoutEntity = payload?.payout?.entity;
-        if (!payoutEntity) throw new Error("Missing payout entity in payload");
-
-        const { id: razorpayPayoutId, fund_account_id: fundAccountId } =
-          payoutEntity;
-        const { amount: payoutAmountInPaise } = payoutEntity;
-        const payoutAmount = Number(payoutAmountInPaise) / 100;
-        const notes = payoutEntity.notes || {}; // notes you set when creating payout
-        const notedUserId = notes.userId ?? null;
-        const notedConsignmentId = notes.consignmentId ?? null;
-        const notedTravelId = notes.travelId ?? null;
-
-        // IDempotency check to ensure payout record exists
-        let existingPayout: PayoutDoc | null = await Payout.findOne({
-          razorpayPayoutId,
-        }).session(session);
-
-        // determine userId by fund account lookup (preferred) or notes fallback
-        let userId = null;
-        if (fundAccountId) {
-          const payoutAccount = await PayoutAccountsModel.findOne({
-            razorpayFundAccountId: fundAccountId,
-          }).session(session);
-          if (payoutAccount) userId = payoutAccount.userId;
-        }
-        // fallback to notes.userId if fundAccount lookup didn't find
-        if (!userId && notedUserId) {
-          // ensure it's converted to ObjectId if it's a string
-          try {
-            userId = new mongoose.Types.ObjectId(notedUserId);
-          } catch {
-            // keep as null if invalid
-            userId = null;
-          }
-        }
-
-        if (event === "payout.processed") {
-          if (!existingPayout) {
-            logger.warn(
-              "Existing payout not found, creating a payout record..."
-            );
-
-            const created = await Payout.create(
-              [
-                {
-                  userId: userId,
-                  travelId: notedTravelId
-                    ? new mongoose.Types.ObjectId(notedTravelId)
-                    : undefined,
-                  consignmentId: notedConsignmentId
-                    ? new mongoose.Types.ObjectId(notedConsignmentId)
-                    : undefined,
-                  amount: payoutAmount,
-                  status: "completed",
-                  razorpayPayoutId,
-                  razorpayPaymentId: payoutEntity.payment_id || undefined,
-                },
-              ],
-              { session }
-            );
-
-            existingPayout = created[0] ?? null; // <-- fallback to null if array is empty
-          } else {
-            // update existing record
-            existingPayout.status = "completed";
-            existingPayout.razorpayPaymentId =
-              existingPayout.razorpayPaymentId || payoutEntity.payment_id;
-            await existingPayout.save({ session });
-          }
-
-          // Mark corresponding earning(s) as withdrawn:
-          // Only mark earnings that are already completed (delivered) and not withdrawn.
-          // Prefer matching by consignmentId if available, otherwise by userId + amount as a fallback.
-          if (existingPayout) {
-            if (existingPayout.consignmentId) {
-              await Earning.updateMany(
-                {
-                  userId: existingPayout.userId,
-                  consignmentId: existingPayout.consignmentId,
-                  status: "completed",
-                  is_withdrawn: false,
-                },
-                {
-                  $set: {
-                    is_withdrawn: true,
-                    withdrawnAt: new Date(),
-                  },
-                },
-                { session }
-              );
-            }
-
-            // partial payout logic (kinda flawed)
-            // else if (userId) {
-            //   // fallback: mark earliest completed earnings up to the payout amount
-            //   // (implementation here tries to be conservative: find completed not withdrawn earnings and mark until sum >= payoutAmount)
-            //   const earnings = await Earning.find(
-            //     {
-            //       userId,
-            //       status: "completed",
-            //       is_withdrawn: false,
-            //     },
-            //     null,
-            //     { sort: { createdAt: 1 } }
-            //   ).session(session);
-
-            //   let remaining = payoutAmount;
-            //   for (const e of earnings) {
-            //     if (remaining <= 0) break;
-            //     // if earning amount <= remaining, mark it withdrawn fully
-            //     remaining -= e.amount;
-            //     e.is_withdrawn = true;
-            //     e.withdrawnAt = new Date();
-            //     await e.save({ session });
-            //   }
-            // }
-          }
-
-          logger.info(`✅ Payout processed successfully: ${razorpayPayoutId}`);
-        } else if (event === "payout.failed") {
-          // mark existing payout as failed (if present)
-          if (existingPayout) {
-            existingPayout.status = "failed";
-            existingPayout.failureReason = payoutEntity.failure_reason || "";
-            await existingPayout.save({ session });
-          } else {
-            // create a failed record for bookkeeping
-            await Payout.create(
-              [
-                {
-                  userId: userId,
-                  travelId: notedTravelId
-                    ? new mongoose.Types.ObjectId(notedTravelId)
-                    : undefined,
-                  consignmentId: notedConsignmentId
-                    ? new mongoose.Types.ObjectId(notedConsignmentId)
-                    : undefined,
-                  amount: payoutAmount,
-                  status: "failed",
-                  razorpayPayoutId,
-                  failureReason: payoutEntity.failure_reason || "",
-                },
-              ],
-              { session }
-            );
-          }
-
-          logger.warn(
-            `⚠️ Payout failed: ${razorpayPayoutId} reason: ${payoutEntity.failure_reason}`
-          );
-        } else {
-          // Other payout events can be logged and ignored, e.g., payout.created, payout.processed etc.
-          logger.info(`Unhandled payout event: ${event}`);
-        }
-      }
-      // ---------------REFUND EVENTS--------------
-      else if (event.startsWith("refund.")) {
-        return await razorpayRefundWebhook(
-          request as unknown as AdminAuthRequest,
-          res
-        );
-      }
+      // Removed refund events handling since refund is manual now
 
       await session.commitTransaction();
       return res.status(200).send("Webhook processed successfully");

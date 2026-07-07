@@ -17,6 +17,7 @@ interface Payment {
     | "completed_pending_webhook"
     | "completed"
     | "failed"
+    | "refund_pending"
     | "refunded"
     | "cancelled";
   createdAt: Date;
@@ -62,6 +63,7 @@ const paymentSchema = new Schema<Payment>(
         "completed_pending_webhook",
         "completed",
         "failed",
+        "refund_pending",
         "refunded",
         "cancelled",
       ],

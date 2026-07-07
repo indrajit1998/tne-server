@@ -74,7 +74,7 @@ export const generateOtp = async (req: Request, res: Response) => {
     }
 
     // Generate OTP
-    const otp = generateRandomOtp();
+    const otp = env.NODE_ENV === 'development' ? '223344' : generateRandomOtp();
 
     // ✅ Ensure user exists
     let user = await User.findOne({ phoneNumber: validPhone });
@@ -127,43 +127,44 @@ export const generateOtp = async (req: Request, res: Response) => {
     // console.log(`🔐 OTP for ${validPhone}: ${otp}`);
 
     // TODO: Uncomment below block in production to enable SMS sending
+    if (env.NODE_ENV !== 'development') {
+      // ✅ Send SMS using Pingbix
+      const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
 
-    // ✅ Send SMS using Pingbix
-    const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+      const formData = new FormData();
+      formData.append('userid', 'timestrings');
+      formData.append('password', 'X82w2G4f');
+      formData.append('mobile', validPhone);
+      formData.append('senderid', 'TMSSYS');
+      formData.append('dltEntityId', '1701173330327453584');
+      formData.append('msg', message);
+      formData.append('sendMethod', 'quick');
+      formData.append('msgType', 'text');
+      formData.append('dltTemplateId', '1707173406941797486');
+      formData.append('output', 'json');
+      formData.append('duplicatecheck', 'true');
+      formData.append('dlr', '1');
 
-    const formData = new FormData();
-    formData.append('userid', 'timestrings');
-    formData.append('password', 'X82w2G4f');
-    formData.append('mobile', validPhone);
-    formData.append('senderid', 'TMSSYS');
-    formData.append('dltEntityId', '1701173330327453584');
-    formData.append('msg', message);
-    formData.append('sendMethod', 'quick');
-    formData.append('msgType', 'text');
-    formData.append('dltTemplateId', '1707173406941797486');
-    formData.append('output', 'json');
-    formData.append('duplicatecheck', 'true');
-    formData.append('dlr', '1');
+      const smsResponse = await axios.post('https://app.pingbix.com/SMSApi/send', formData, {
+        headers: {
+          ...formData.getHeaders(),
+          Cookie: 'SERVERID=webC1',
+        },
+        maxBodyLength: Infinity,
+      });
 
-    const smsResponse = await axios.post('https://app.pingbix.com/SMSApi/send', formData, {
-      headers: {
-        ...formData.getHeaders(),
-        Cookie: 'SERVERID=webC1',
-      },
-      maxBodyLength: Infinity,
-    });
+      console.log('✅ SMS API Response:', smsResponse.data);
 
-    console.log('✅ SMS API Response:', smsResponse.data);
-
-    if (smsResponse.data?.status === 'success') {
-      return res
-        .status(CODES.OK)
-        .json(sendResponse(CODES.OK, { phoneNumber: validPhone }, 'OTP sent successfully'));
-    } else {
-      return res
-        .status(CODES.INTERNAL_SERVER_ERROR)
-        .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Failed to send OTP'));
+      if (smsResponse.data?.status !== 'success') {
+        return res
+          .status(CODES.INTERNAL_SERVER_ERROR)
+          .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Failed to send OTP'));
+      }
     }
+
+    return res
+      .status(CODES.OK)
+      .json(sendResponse(CODES.OK, { phoneNumber: validPhone }, 'OTP sent successfully'));
 
     // TODO: Comment out the block in prod
     // For dev: just send OTP back for FE logs
