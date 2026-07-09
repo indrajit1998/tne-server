@@ -56,7 +56,7 @@ async function deleteTestUsers() {
     }
 
     // 3. CarryRequests
-    const crQuery = [
+    const crQuery: any[] = [
       { travellerId: { $in: userIds } },
       { requestedBy: { $in: userIds } },
     ];
@@ -68,7 +68,7 @@ async function deleteTestUsers() {
     logger.info(`🗑️  Deleted ${crRes.deletedCount} CarryRequests.`);
 
     // 4. Payments
-    const payQuery = [{ userId: { $in: userIds } }];
+    const payQuery: any[] = [{ userId: { $in: userIds } }];
     if (travelIds.length > 0) payQuery.push({ travelId: { $in: travelIds } });
     if (consignmentIds.length > 0)
       payQuery.push({ consignmentId: { $in: consignmentIds } });

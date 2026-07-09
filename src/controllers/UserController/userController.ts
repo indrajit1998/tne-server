@@ -12,6 +12,7 @@ import type { AuthRequest } from '../../middlewares/authMiddleware.js';
 import { User, type User as UserT } from '../../models/user.model';
 import { Verification } from '../../models/verfiication.model';
 import { createRazorpayContactId } from '../../services/razorpay.service.js';
+import { generateOtp as sendPingbixOtp } from '../../lib/utils';
 
 const generateRandomOtp = () => Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit
 
@@ -78,7 +79,9 @@ export const generateOtp = async (req: Request, res: Response) => {
 
     // ✅ Ensure user exists
     let user = await User.findOne({ phoneNumber: validPhone });
+    let isSignup = false;
     if (!user) {
+      isSignup = true;
       try {
         user = await User.create({ phoneNumber: validPhone });
       } catch (error) {
@@ -128,34 +131,16 @@ export const generateOtp = async (req: Request, res: Response) => {
 
     // TODO: Uncomment below block in production to enable SMS sending
     if (env.NODE_ENV !== 'development') {
-      // ✅ Send SMS using Pingbix
-      const message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
-
-      const formData = new FormData();
-      formData.append('userid', 'timestrings');
-      formData.append('password', 'X82w2G4f');
-      formData.append('mobile', validPhone);
-      formData.append('senderid', 'TMSSYS');
-      formData.append('dltEntityId', '1701173330327453584');
-      formData.append('msg', message);
-      formData.append('sendMethod', 'quick');
-      formData.append('msgType', 'text');
-      formData.append('dltTemplateId', '1707173406941797486');
-      formData.append('output', 'json');
-      formData.append('duplicatecheck', 'true');
-      formData.append('dlr', '1');
-
-      const smsResponse = await axios.post('https://app.pingbix.com/SMSApi/send', formData, {
-        headers: {
-          ...formData.getHeaders(),
-          Cookie: 'SERVERID=webC1',
-        },
-        maxBodyLength: Infinity,
-      });
-
-      console.log('✅ SMS API Response:', smsResponse.data);
-
-      if (smsResponse.data?.status !== 'success') {
+      // ✅ Send SMS using Pingbix via centralized utils function
+      const type = isSignup ? 'signup' : 'login';
+      try {
+        const smsResult = await sendPingbixOtp(validPhone, type, otp);
+        if (smsResult.response?.status !== 'success') {
+          return res
+            .status(CODES.INTERNAL_SERVER_ERROR)
+            .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Failed to send OTP'));
+        }
+      } catch (error) {
         return res
           .status(CODES.INTERNAL_SERVER_ERROR)
           .json(sendResponse(CODES.INTERNAL_SERVER_ERROR, null, 'Failed to send OTP'));

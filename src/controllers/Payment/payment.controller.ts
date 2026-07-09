@@ -468,7 +468,7 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
     );
     razorpayOrderId = orderResponse.data.id;
     orderData = orderResponse.data;
-    logger.info("✅ Razorpay order created:", razorpayOrderId);
+    logger.info(`✅ Razorpay order created: ${razorpayOrderId}`);
     // ✅ NOW start transaction and save to DB
     session.startTransaction();
 

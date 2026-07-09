@@ -1,7 +1,8 @@
-import axios from 'axios';
-import FormData from 'form-data';
+import axios from "axios";
+import FormData from "form-data";
+import env from "./env";
 interface GeoPoint {
-  type: 'Point';
+  type: "Point";
   coordinates: [number, number];
 }
 
@@ -9,7 +10,7 @@ function formatDuration(startDate: string, endDate: string) {
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
 
-  if (end < start) throw new Error('End date cannot be before start date');
+  if (end < start) throw new Error("End date cannot be before start date");
 
   let diffMs = end - start;
 
@@ -23,20 +24,20 @@ function formatDuration(startDate: string, endDate: string) {
   diffMs -= minutes * 1000 * 60;
 
   const parts = [];
-  if (days) parts.push(`${days} day${days > 1 ? 's' : ''}`);
-  if (hours) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
-  if (minutes) parts.push(`${minutes} minute${minutes > 1 ? 's' : ''}`);
+  if (days) parts.push(`${days} day${days > 1 ? "s" : ""}`);
+  if (hours) parts.push(`${hours} hour${hours > 1 ? "s" : ""}`);
+  if (minutes) parts.push(`${minutes} minute${minutes > 1 ? "s" : ""}`);
 
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 function calculateVolumetricWeight(
   length: number,
   width: number,
   height: number,
-  unit: 'cm' | 'in' = 'cm',
+  unit: "cm" | "in" = "cm",
 ) {
-  if (unit === 'in') {
+  if (unit === "in") {
     length *= 2.54;
     width *= 2.54;
     height *= 2.54;
@@ -49,13 +50,13 @@ function calculateVolumetricWeight(
 function calculateTravellerEarning(modelOfTravel: string, consignment: any) {
   let earning;
   switch (modelOfTravel) {
-    case 'air':
+    case "air":
       earning = consignment.flightPrice.travelerEarn;
       break;
-    case 'roadways':
+    case "roadways":
       earning = consignment.roadWaysPrice.travelerEarn;
       break;
-    case 'train':
+    case "train":
       earning = consignment.trainPrice.travelerEarn;
       break;
   }
@@ -65,73 +66,111 @@ function calculateTravellerEarning(modelOfTravel: string, consignment: any) {
 function calculateSenderPay(modelOfTravel: string, consignment: any) {
   let pay;
   switch (modelOfTravel) {
-    case 'air':
+    case "air":
       pay = consignment.flightPrice.senderPay;
       break;
-    case 'roadways':
+    case "roadways":
       pay = consignment.roadWaysPrice.senderPay;
       break;
-    case 'train':
+    case "train":
       pay = consignment.trainPrice.senderPay;
       break;
   }
   return pay;
 }
 
-export async function generateOtp(phoneNumber: string, type?: 'sender' | 'receiver') {
-  const generateRandomOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+export type OtpTemplateType =
+  | "sender"
+  | "receiver"
+  | "login"
+  | "signup"
+  | "traveler_takeover"
+  | "recipient_collect";
 
-  const otp = generateRandomOtp();
+export async function generateOtp(
+  phoneNumber: string,
+  type: OtpTemplateType = "login",
+  predefinedOtp?: string,
+) {
+  const generateRandomOtp = () =>
+    Math.floor(100000 + Math.random() * 900000).toString();
 
-  // ✅ Log OTP for dev
-  // console.log(`🔐 Travel OTP generation done, skipped sending in dev mode... `);
+  const otp = predefinedOtp || generateRandomOtp();
 
-  const message =
-    type === 'receiver'
-      ? `Please use OTP ${otp} to receive/collect the Consignment from the Traveler. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
-      : type === 'sender'
-        ? `Please use OTP ${otp} to Handover the Consignment to the Traveler for confirmation. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`
-        : `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+  let message = "";
+  let dltTemplateId = "";
+  let senderid = "TMSSYS";
 
-  const dltTemplateId =
-    type === 'sender'
-      ? '1707177028520360168' // sender template
-      : type === 'receiver'
-        ? '1707177039824571525' // receiver template
-        : '1707173408029753777'; // fallback for login
-
-  const formData = new FormData();
-  formData.append('userid', 'timestrings');
-  formData.append('password', 'X82w2G4f');
-  formData.append('mobile', phoneNumber);
-  formData.append('senderid', 'TMSSYS');
-  formData.append('dltEntityId', '1701173330327453584');
-  formData.append('msg', message);
-  formData.append('sendMethod', 'quick');
-  formData.append('msgType', 'text');
-  formData.append('dltTemplateId', dltTemplateId);
-  formData.append('output', 'json');
-  formData.append('duplicatecheck', 'true');
-  formData.append('dlr', '1');
-
-  try {
-    const smsResponse = await axios.post('https://app.pingbix.com/SMSApi/send', formData, {
-      headers: {
-        ...formData.getHeaders(), // ✅ only in Node.js
-        Cookie: 'SERVERID=webC1',
-      },
-      maxBodyLength: Infinity,
-    });
-
-    console.log('✅ SMS API Response:', smsResponse.data);
-    return { otp, response: smsResponse.data };
-  } catch (error) {
-    console.error('❌ Error sending SMS:', error);
-    throw error;
+  switch (type) {
+    case "sender":
+      message = `Please use OTP ${otp} to Handover the Consignment to the Traveler for confirmation. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`;
+      dltTemplateId = "1707177028520360168";
+      senderid = "TRVERN";
+      break;
+    case "receiver":
+      message = `Please use OTP ${otp} to receive/collect the Consignment from the Traveler. Do not share the OTP over phone. Regards, TimeStrings System Pvt. Ltd`;
+      dltTemplateId = "1707177039824571525";
+      senderid = "TRVERN";
+      break;
+    case "signup":
+      message = `${otp} is OTP to Sign up with Timestrings System App. Do not share with anyone.`;
+      dltTemplateId = "1707174125030091394";
+      senderid = "TMSSYS";
+      break;
+    case "traveler_takeover":
+      message = `Please use OTP ${otp} to accept the Consignment from the Sender after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd.`;
+      dltTemplateId = "1707173408034076405";
+      senderid = "TMSSYS";
+      break;
+    case "recipient_collect":
+      message = `Please use OTP ${otp} to Collect the Consignment from the Traveler after checking the Package. Do not share the OTP over phone. Regards, Timestrings System Pvt. Ltd`;
+      dltTemplateId = "1707173408029753777";
+      senderid = "TMSSYS";
+      break;
+    case "login":
+    default:
+      message = `${otp} is OTP to Login to Timestrings System App. Do not share with anyone.`;
+      dltTemplateId = "1707173406941797486";
+      senderid = "TMSSYS";
+      break;
   }
 
-  // For Dev mode
-  // return { otp };
+  // Strip '+' prefix if present to ensure mobile number formatting compatibility with the carrier
+  const cleanPhone = phoneNumber.replace("+", "");
+
+  const formData = new FormData();
+  formData.append("userid", "timestrings");
+  formData.append("password", "X82w2G4f");
+  formData.append("mobile", cleanPhone);
+  formData.append("senderid", senderid);
+  formData.append("dltEntityId", "1701173330327453584");
+  formData.append("msg", message);
+  formData.append("sendMethod", "quick");
+  formData.append("msgType", "text");
+  formData.append("dltTemplateId", dltTemplateId);
+  formData.append("output", "json");
+  formData.append("duplicatecheck", "true");
+  formData.append("dlr", "1");
+
+  try {
+    const smsResponse = await axios.post(
+      "https://app.pingbix.com/SMSApi/send",
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(), // ✅ only in Node.js
+          Cookie: "SERVERID=webC1",
+        },
+        maxBodyLength: Infinity,
+      },
+    );
+
+    console.log("✅ SMS API Response:", smsResponse.data);
+    return { otp, response: smsResponse.data };
+  } catch (error) {
+    console.error("❌ Error sending SMS:", error);
+    throw error;
+  }
 }
 
 const formatCoordinates = (coords?: GeoPoint) => {
