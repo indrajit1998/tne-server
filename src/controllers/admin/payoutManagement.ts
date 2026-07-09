@@ -36,11 +36,12 @@ export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
     const enrichedPayouts = payouts.map((payout: any) => {
       const user = payout.userId;
       let decryptedAccountNumber = "";
-      if (user?.bankDetails?.accountNumberEncrypted) {
+      const encString = user?.bankDetails?.accountNumberEncrypted || user?.bankDetails?.accountHash;
+      if (encString) {
         try {
-          decryptedAccountNumber = decrypt(user.bankDetails.accountNumberEncrypted);
+          decryptedAccountNumber = decrypt(encString);
         } catch (err: any) {
-          console.error(`[getPayouts] Decryption error for user ${user._id}. Encrypted: ${user.bankDetails.accountNumberEncrypted}, Error: ${err.message}`);
+          console.error(`[getPayouts] Decryption error for user ${user._id}. Encrypted: ${encString}, Error: ${err.message}`);
           decryptedAccountNumber = "Decryption Error";
         }
       } else {
@@ -215,11 +216,12 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
     const dataRows = payouts.map((payout: any) => {
       const user: any = payout.userId;
       let decryptedAccountNumber = "";
-      if (user?.bankDetails?.accountNumberEncrypted) {
+      const encString = user?.bankDetails?.accountNumberEncrypted || user?.bankDetails?.accountHash;
+      if (encString) {
         try {
-          decryptedAccountNumber = decrypt(user.bankDetails.accountNumberEncrypted);
+          decryptedAccountNumber = decrypt(encString);
         } catch (err: any) {
-          console.error(`[exportPayouts] Decryption error for user ${user?._id}. Encrypted: ${user.bankDetails.accountNumberEncrypted}, Error: ${err.message}`);
+          console.error(`[exportPayouts] Decryption error for user ${user?._id}. Encrypted: ${encString}, Error: ${err.message}`);
           decryptedAccountNumber = "XXXXXXXXXXX";
         }
       } else {
