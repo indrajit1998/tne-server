@@ -648,7 +648,8 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
           throw { status: CODES.BAD_REQUEST, message: 'Invalid IFSC code' };
         }
 
-        // Mask and hash
+        // Mask, encrypt, and hash
+        const encryptedAccountNumber = encrypt(accountNumber);
         const accountHash = crypto.createHash('sha256').update(accountNumber).digest('hex');
         maskedDetails.accountNumber =
           accountNumber.length > 4 ? '****' + accountNumber.slice(-4) : accountNumber;
@@ -682,6 +683,7 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
               displayName,
               accountType: 'bank_account',
               ...maskedDetails,
+              accountNumberEncrypted: encryptedAccountNumber,
               accountHash,
             },
           ],
@@ -698,6 +700,7 @@ export const addFundAccount = async (req: AuthRequest, res: Response) => {
         user.bankDetails = {
           accountHolderName: name,
           accountNumber: maskedDetails.accountNumber,
+          accountNumberEncrypted: encryptedAccountNumber,
           ifscCode: ifsc.toUpperCase(),
           bankName,
           branch,
