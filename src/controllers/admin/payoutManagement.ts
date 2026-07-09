@@ -9,6 +9,7 @@ import logger from "../../lib/logger.js";
 import { CODES } from "../../constants/statusCodes";
 import sendResponse from "../../lib/ApiResponse";
 import { notifyUser } from "../../lib/pushNotification";
+import * as XLSX from "xlsx";
 
 export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
   try {
@@ -199,54 +200,70 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
     }
 
     const payouts = await Payout.find(query)
-      .populate("userId", "firstName lastName bankDetails")
+      .populate("userId", "firstName lastName bankDetails email")
       .sort({ createdAt: -1 })
       .lean();
 
-    let csvContent = "Payout ID,Customer Name,Account Holder Name,Bank Name,Account Number,IFSC,Branch,Amount,Status,Created At\n";
+    const headers = [
+      "Beneficiary Name", "Beneficiary Account Number", "IFSC", "Txn Type",
+      "Debit Account Number", "Value Date", "Amount", "Currency",
+      "Email", "Remarks", "Payment Ref No", "Corp Email",
+      "Client Code", "Location", "Beneficiary Mobile"
+    ];
 
-    for (const payout of payouts) {
+    const dataRows = payouts.map((payout: any) => {
       const user: any = payout.userId;
       let decryptedAccountNumber = "";
       if (user?.bankDetails?.accountNumberEncrypted) {
         try {
           decryptedAccountNumber = decrypt(user.bankDetails.accountNumberEncrypted);
         } catch (err) {
-          decryptedAccountNumber = "Decryption Error";
+          decryptedAccountNumber = "XXXXXXXXXXX";
         }
       } else {
         decryptedAccountNumber = user?.bankDetails?.accountNumber || "";
+        if (decryptedAccountNumber === "Decryption Error") {
+          decryptedAccountNumber = "XXXXXXXXXXX";
+        }
       }
 
-      const customerName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : "";
-      const accountHolderName = user?.bankDetails?.accountHolderName || "";
-      const bankName = user?.bankDetails?.bankName || "";
-      const ifscCode = user?.bankDetails?.ifscCode || "";
-      const branch = user?.bankDetails?.branch || "";
+      const bankName = user?.bankDetails?.bankName?.toLowerCase() || '';
+      const isIdfc = bankName.includes("idfc");
       const amount = payout.amount || 0;
-      const payoutStatus = payout.status;
-      const createdAt = payout.createdAt ? new Date(payout.createdAt).toISOString() : "";
+      const txnType = isIdfc ? "IFT" : (amount >= 200000 ? "RTGS" : "NEFT");
 
-      // Escape quotes and wrap in quotes to prevent CSV injection / parsing issues
-      const row = [
-        payout._id.toString(),
-        `"${customerName.replace(/"/g, '""')}"`,
-        `"${accountHolderName.replace(/"/g, '""')}"`,
-        `"${bankName.replace(/"/g, '""')}"`,
-        `"${decryptedAccountNumber.replace(/"/g, '""')}"`,
-        `"${ifscCode.replace(/"/g, '""')}"`,
-        `"${branch.replace(/"/g, '""')}"`,
+      const formattedDate = new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      }).format(new Date()).replace(/ /g, '-');
+
+      return [
+        user?.bankDetails?.accountHolderName || user?.firstName || '',
+        decryptedAccountNumber,
+        user?.bankDetails?.ifscCode || '',
+        txnType,
+        '', // Debit Account Number (admin to fill)
+        formattedDate,
         amount,
-        payoutStatus,
-        createdAt
-      ].join(",");
+        'INR',
+        user?.email || '',
+        `Payout ${payout._id}`,
+        '', '', '', '', ''
+      ];
+    });
 
-      csvContent += row + "\n";
-    }
+    const worksheetData = [headers, ...dataRows];
+    
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+    
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=payouts_${status || "all"}_export.csv`);
-    return res.status(200).send(csvContent);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=payouts_${status || "all"}_export.xlsx`);
+    return res.status(200).send(buffer);
   } catch (error) {
     logger.error("Error exporting payouts: " + error);
     return res.status(CODES.INTERNAL_SERVER_ERROR).json(
