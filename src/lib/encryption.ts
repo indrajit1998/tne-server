@@ -1,7 +1,10 @@
 import crypto from "crypto";
 import env from "./env";
 
-const ENCRYPTION_KEY = Buffer.from(env.BANK_ENCRYPTION_KEY, "base64"); // 32-byte key
+const ENCRYPTION_KEY = Buffer.from(
+  "Wo2p6wk5gGFkGuoUOj/ahnsftCRdD4z0zj2j110M5dw=",
+  "base64",
+); // 32-byte key
 const IV_LENGTH = 16; // For AES, this is always 16
 
 export function encrypt(text: string): string {
