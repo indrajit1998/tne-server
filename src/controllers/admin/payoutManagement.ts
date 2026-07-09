@@ -39,7 +39,8 @@ export const getPayouts = async (req: AdminAuthRequest, res: Response) => {
       if (user?.bankDetails?.accountNumberEncrypted) {
         try {
           decryptedAccountNumber = decrypt(user.bankDetails.accountNumberEncrypted);
-        } catch (err) {
+        } catch (err: any) {
+          console.error(`[getPayouts] Decryption error for user ${user._id}. Encrypted: ${user.bankDetails.accountNumberEncrypted}, Error: ${err.message}`);
           decryptedAccountNumber = "Decryption Error";
         }
       } else {
@@ -217,7 +218,8 @@ export const exportPayouts = async (req: AdminAuthRequest, res: Response) => {
       if (user?.bankDetails?.accountNumberEncrypted) {
         try {
           decryptedAccountNumber = decrypt(user.bankDetails.accountNumberEncrypted);
-        } catch (err) {
+        } catch (err: any) {
+          console.error(`[exportPayouts] Decryption error for user ${user?._id}. Encrypted: ${user.bankDetails.accountNumberEncrypted}, Error: ${err.message}`);
           decryptedAccountNumber = "XXXXXXXXXXX";
         }
       } else {
