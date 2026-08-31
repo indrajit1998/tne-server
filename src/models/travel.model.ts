@@ -108,4 +108,7 @@ const travelSchema = new Schema<Travel>(
   { timestamps: true }
 );
 
+travelSchema.index({ fromCoordinates: "2dsphere" });
+travelSchema.index({ toCoordinates: "2dsphere" });
+
 export const TravelModel = model<Travel>("Travel", travelSchema);

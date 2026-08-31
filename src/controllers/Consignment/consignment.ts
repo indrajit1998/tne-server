@@ -25,7 +25,7 @@ import Notification from "../../models/notification.model";
 import { TravelModel } from "../../models/travel.model";
 import TravelConsignments from "../../models/travelconsignments.model";
 import { User } from "../../models/user.model";
-import { getDistance } from "../../services/maps.service";
+import { geocodeAddress, getDistance } from "../../services/maps.service";
 import {
   emitCarryRequestAccepted,
   emitCarryRequestRejected,
@@ -331,10 +331,24 @@ export const getConsignments = async (req: AuthRequest, res: Response) => {
 export const locateConsignment = async (req: AuthRequest, res: Response) => {
   try {
     const currentUserId = req.user;
-    const { fromstate, tostate, date } = req.query as {
+    const {
+      fromstate,
+      tostate,
+      date,
+      fromLat,
+      fromLng,
+      toLat,
+      toLng,
+      radius,
+    } = req.query as {
       fromstate: string;
       tostate: string;
       date: string;
+      fromLat?: string;
+      fromLng?: string;
+      toLat?: string;
+      toLng?: string;
+      radius?: string;
     };
 
     if (!fromstate || !tostate || !date) {
@@ -386,26 +400,72 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Radius calculation (Default: 100 km)
+    const searchRadiusKm = Number(radius) || 100;
+    const EARTH_RADIUS_KM = 6378.1;
+    const radiusInRadians = searchRadiusKm / EARTH_RADIUS_KM;
+
+    let originCoords: { lat: number; lng: number } | null = null;
+    let destCoords: { lat: number; lng: number } | null = null;
+
+    if (fromLat && fromLng) {
+      originCoords = { lat: Number(fromLat), lng: Number(fromLng) };
+    } else {
+      originCoords = await geocodeAddress(fromstate);
+    }
+
+    if (toLat && toLng) {
+      destCoords = { lat: Number(toLat), lng: Number(toLng) };
+    } else {
+      destCoords = await geocodeAddress(tostate);
+    }
+
     logger.info(
-      `🔍 Locating consignments from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()}`,
+      `🔍 Locating consignments from "${fromstate}" → "${tostate}" within ${searchRadiusKm}km radius on ${startOfDay.toISOString()}`,
+    );
+
+    const fromConditions: any[] = [];
+    if (originCoords) {
+      fromConditions.push({
+        fromCoordinates: {
+          $geoWithin: {
+            $centerSphere: [
+              [originCoords.lng, originCoords.lat],
+              radiusInRadians,
+            ],
+          },
+        },
+      });
+    }
+    fromConditions.push(
+      { "fromAddress.state": { $in: fromRegexes } },
+      { "fromAddress.city": { $in: fromRegexes } },
+      { "fromAddress.street": { $in: fromRegexes } },
+    );
+
+    const toConditions: any[] = [];
+    if (destCoords) {
+      toConditions.push({
+        toCoordinates: {
+          $geoWithin: {
+            $centerSphere: [
+              [destCoords.lng, destCoords.lat],
+              radiusInRadians,
+            ],
+          },
+        },
+      });
+    }
+    toConditions.push(
+      { "toAddress.state": { $in: toRegexes } },
+      { "toAddress.city": { $in: toRegexes } },
+      { "toAddress.street": { $in: toRegexes } },
     );
 
     const consignments = await ConsignmentModel.find({
       $and: [
-        {
-          $or: [
-            { "fromAddress.state": { $in: fromRegexes } },
-            { "fromAddress.city": { $in: fromRegexes } },
-            { "fromAddress.street": { $in: fromRegexes } },
-          ],
-        },
-        {
-          $or: [
-            { "toAddress.state": { $in: toRegexes } },
-            { "toAddress.city": { $in: toRegexes } },
-            { "toAddress.street": { $in: toRegexes } },
-          ],
-        },
+        { $or: fromConditions },
+        { $or: toConditions },
         {
           sendingDate: { $gte: startOfDay, $lt: endOfDay },
           status: "published",

@@ -207,6 +207,9 @@ const consignmentSchema = new Schema<Consignment>(
   { timestamps: true }
 );
 
+consignmentSchema.index({ fromCoordinates: "2dsphere" });
+consignmentSchema.index({ toCoordinates: "2dsphere" });
+
 const ConsignmentModel = model<Consignment>("Consignment", consignmentSchema);
 
 export default ConsignmentModel;

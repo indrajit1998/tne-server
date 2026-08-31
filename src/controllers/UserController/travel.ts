@@ -7,7 +7,7 @@ import type { AuthRequest } from '../../middlewares/authMiddleware';
 import { Address } from '../../models/address.model';
 import { TravelModel } from '../../models/travel.model';
 import TravelConsignments from '../../models/travelconsignments.model';
-import { getDistance } from '../../services/maps.service';
+import { geocodeAddress, getDistance } from '../../services/maps.service';
 
 export const createTravel = async (req: AuthRequest, res: Response) => {
   try {
@@ -121,11 +121,26 @@ export const getTravels = async (req: AuthRequest, res: Response) => {
 
 export const locateTravel = async (req: AuthRequest, res: Response) => {
   try {
-    const { fromstate, tostate, date, modeOfTravel } = req.query as {
+    const {
+      fromstate,
+      tostate,
+      date,
+      modeOfTravel,
+      fromLat,
+      fromLng,
+      toLat,
+      toLng,
+      radius,
+    } = req.query as {
       fromstate: string;
       tostate: string;
       date: string;
       modeOfTravel?: 'air' | 'roadways' | 'train';
+      fromLat?: string;
+      fromLng?: string;
+      toLat?: string;
+      toLng?: string;
+      radius?: string;
     };
     const currentUserId = req.user;
 
@@ -134,17 +149,6 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
         message: 'Missing required query parameters: fromstate, tostate, date',
       });
     }
-
-    // Correct way
-    // logger.info(
-    //   {
-    //     fromstate,
-    //     tostate,
-    //     date,
-    //     modeOfTravel,
-    //   },
-    //   "DATA BEING SENT (IN locateTravel)"
-    // );
 
     // Normalize and tokenize for flexible partial matching
     const tokenize = (str: string) =>
@@ -159,21 +163,10 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
     const fromRegexes = fromTokens.map(t => new RegExp(t, 'i'));
     const toRegexes = toTokens.map(t => new RegExp(t, 'i'));
 
-    // logger.info("before date");
-
     // Parse date using utility
     let startOfDay: Date, endOfDay: Date;
     try {
       ({ startOfDay, endOfDay } = getDateRange(date));
-
-      // logger.info(
-      //   {
-      //     originalDate: date,
-      //     startOfDay: startOfDay.toISOString(),
-      //     endOfDay: endOfDay.toISOString(),
-      //   },
-      //   "Parsed date range"
-      // );
     } catch (error) {
       logger.error(`Date parsing error: ${error}`);
       return res.status(400).json({
@@ -182,7 +175,25 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // logger.info("after date..");
+    // Radius calculation (Default: 100 km)
+    const searchRadiusKm = Number(radius) || 100;
+    const EARTH_RADIUS_KM = 6378.1;
+    const radiusInRadians = searchRadiusKm / EARTH_RADIUS_KM;
+
+    let originCoords: { lat: number; lng: number } | null = null;
+    let destCoords: { lat: number; lng: number } | null = null;
+
+    if (fromLat && fromLng) {
+      originCoords = { lat: Number(fromLat), lng: Number(fromLng) };
+    } else {
+      originCoords = await geocodeAddress(fromstate);
+    }
+
+    if (toLat && toLng) {
+      destCoords = { lat: Number(toLat), lng: Number(toLng) };
+    } else {
+      destCoords = await geocodeAddress(tostate);
+    }
 
     let travelMode: string | undefined;
 
@@ -201,38 +212,58 @@ export const locateTravel = async (req: AuthRequest, res: Response) => {
       travelMode = undefined;
     }
 
-    // logger.info("after mode of travel..");
+    logger.info(
+      `🔍 Locating travels from "${fromstate}" → "${tostate}" within ${searchRadiusKm}km radius on ${startOfDay.toISOString()} ${
+        travelMode ? `(mode: ${travelMode})` : ''
+      }`
+    );
 
-    // logger.info(
-    //   `🔍 Locating travels from "${fromstate}" → "${tostate}" on ${startOfDay.toISOString()} ${
-    //     travelMode ? `(mode: ${travelMode})` : ""
-    //   }`
-    // );
+    const fromConditions: any[] = [];
+    if (originCoords) {
+      fromConditions.push({
+        fromCoordinates: {
+          $geoWithin: {
+            $centerSphere: [
+              [originCoords.lng, originCoords.lat],
+              radiusInRadians,
+            ],
+          },
+        },
+      });
+    }
+    fromConditions.push(
+      { 'fromAddress.state': { $in: fromRegexes } },
+      { 'fromAddress.city': { $in: fromRegexes } },
+      { 'fromAddress.street': { $in: fromRegexes } },
+      { 'fromAddress.state': { $regex: fromstate, $options: 'i' } },
+      { 'fromAddress.city': { $regex: fromstate, $options: 'i' } }
+    );
 
-    // logger.info("afterlogger of locating travels..");
+    const toConditions: any[] = [];
+    if (destCoords) {
+      toConditions.push({
+        toCoordinates: {
+          $geoWithin: {
+            $centerSphere: [
+              [destCoords.lng, destCoords.lat],
+              radiusInRadians,
+            ],
+          },
+        },
+      });
+    }
+    toConditions.push(
+      { 'toAddress.state': { $in: toRegexes } },
+      { 'toAddress.city': { $in: toRegexes } },
+      { 'toAddress.street': { $in: toRegexes } },
+      { 'toAddress.state': { $regex: tostate, $options: 'i' } },
+      { 'toAddress.city': { $regex: tostate, $options: 'i' } }
+    );
 
     const query: any = {
       $and: [
-        {
-          $or: [
-            { 'fromAddress.state': { $in: fromRegexes } },
-            { 'fromAddress.city': { $in: fromRegexes } },
-            { 'fromAddress.street': { $in: fromRegexes } },
-            // Add combined state matching
-            { 'fromAddress.state': { $regex: fromstate, $options: 'i' } },
-            { 'fromAddress.city': { $regex: fromstate, $options: 'i' } },
-          ],
-        },
-        {
-          $or: [
-            { 'toAddress.state': { $in: toRegexes } },
-            { 'toAddress.city': { $in: toRegexes } },
-            { 'toAddress.street': { $in: toRegexes } },
-            // Add combined state matching
-            { 'toAddress.state': { $regex: tostate, $options: 'i' } },
-            { 'toAddress.city': { $regex: tostate, $options: 'i' } },
-          ],
-        },
+        { $or: fromConditions },
+        { $or: toConditions },
         {
           expectedStartDate: { $gte: startOfDay, $lt: endOfDay },
           status: 'upcoming',
