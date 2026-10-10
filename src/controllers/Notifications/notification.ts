@@ -41,46 +41,46 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
     const transformedNotifications = notifications.map((notif) => {
       const carryRequest = notif.requestId as any;
 
-      // Determine accurate category/typeOfNotif: Respect stored typeOfNotif first
       let category = notif.typeOfNotif;
       const titleLower = notif.title?.toLowerCase() || "";
       const msgLower = notif.message?.toLowerCase() || "";
 
-      // Only deduce category if missing or generic
-      if (!category || category === "general") {
-        if (
-          msgLower.includes("requested you to carry") ||
-          msgLower.includes("to carry their consignment") ||
-          msgLower.includes("for your travel") ||
-          msgLower.includes("on your travel") ||
-          msgLower.includes("your travel") ||
-          msgLower.includes("your trip") ||
-          titleLower === "new carry request" ||
-          titleLower.includes("travel")
-        ) {
-          category = "travel";
-        } else if (
-          msgLower.includes("not accepted your consignment") ||
-          msgLower.includes("has not accepted your") ||
-          msgLower.includes("your carry request") ||
-          msgLower.includes("your consignment") ||
-          msgLower.includes("to carry your consignment") ||
-          msgLower.includes("interest to carry") ||
-          msgLower.includes("interest of the traveler") ||
-          msgLower.includes("consignment collected") ||
-          msgLower.includes("consignment delivered") ||
-          msgLower.includes("consignment handed over") ||
-          msgLower.includes("cancelled their travel") ||
-          titleLower.includes("interest to carry") ||
-          titleLower.includes("request accepted") ||
-          titleLower.includes("consignment")
-        ) {
-          category = "consignment";
-        } else if (notif.relatedTravelId && !notif.relatedConsignmentId) {
-          category = "travel";
-        } else {
-          category = "consignment";
-        }
+      // 1. Explicit consignment updates must ALWAYS be consignment (even if legacy DB had typeOfNotif: "travel")
+      if (
+        msgLower.includes("not accepted your consignment") ||
+        msgLower.includes("not accepted your carry request") ||
+        msgLower.includes("your carry request") ||
+        msgLower.includes("your consignment") ||
+        msgLower.includes("to carry your consignment") ||
+        msgLower.includes("interest to carry") ||
+        msgLower.includes("interest of the traveler") ||
+        msgLower.includes("proceed to payment") ||
+        msgLower.includes("please pay") ||
+        msgLower.includes("payment pending") ||
+        msgLower.includes("payment required") ||
+        msgLower.includes("handed over your consignment") ||
+        titleLower.includes("interest to carry")
+      ) {
+        category = "consignment";
+      } else if (
+        msgLower.includes("requested you to carry") ||
+        msgLower.includes("to carry their consignment") ||
+        msgLower.includes("on your travel") ||
+        msgLower.includes("for your travel") ||
+        msgLower.includes("your travel") ||
+        msgLower.includes("your trip") ||
+        titleLower === "new carry request" ||
+        titleLower.includes("assigned to carry")
+      ) {
+        category = "travel";
+      } else if (notif.typeOfNotif === "travel") {
+        category = "travel";
+      } else if (notif.typeOfNotif === "consignment") {
+        category = "consignment";
+      } else if (notif.relatedTravelId && !notif.relatedConsignmentId) {
+        category = "travel";
+      } else {
+        category = "consignment";
       }
 
       return {

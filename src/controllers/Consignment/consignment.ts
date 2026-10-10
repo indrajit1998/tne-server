@@ -504,7 +504,7 @@ export const locateConsignmentById = async (
     }
     const consignment = await ConsignmentModel.findById(consignmentId).populate(
       "senderId",
-      "firstName lastName rating"
+      "firstName lastName rating",
     );
     if (!consignment) {
       return res.status(404).json({ message: "No consignment found" });
@@ -1270,12 +1270,14 @@ export const rejectCarryRequest = async (req: AuthRequest, res: Response) => {
       : carryRequest.travellerId.toString();
 
     const rejectorName = isTravellerRejecting ? travellerName : senderName;
-    const roleSuffix = isTravellerRejecting ? " (Traveler)" : "";
+    const rejectMessage = isTravellerRejecting
+      ? `${travellerName} (Traveler) has not accepted your consignment carry request.`
+      : `${senderName} (Sender) has declined your interest to carry this consignment on your travel.`;
 
     await Notification.create({
       userId: targetUserId,
       title: "Carry request update",
-      message: `${rejectorName}${roleSuffix} has not accepted your consignment carry request`,
+      message: rejectMessage,
       // ✅ FIXED: Set typeOfNotif based on who is receiving the notification
       typeOfNotif: isTravellerRejecting ? "consignment" : "travel",
       relatedConsignmentId: carryRequest.consignmentId,

@@ -840,7 +840,7 @@ export async function finalizePaymentSuccess(
   await Notification.create({
     userId: carryRequest.requestedBy,
     title: "Payment Successful",
-    message: "Payment successful! The consignment is now officially assigned to the traveler.",
+    message: "Payment successful! The consignment is now officially assigned. View Handover OTP: Consignment History → Active Consignment.",
     typeOfNotif: "consignment",
     relatedConsignmentId: payment.consignmentId,
     relatedTravelId: payment.travelId,
@@ -852,7 +852,7 @@ export async function finalizePaymentSuccess(
   await Notification.create({
     userId: carryRequest.travellerId,
     title: "Consignment Assigned",
-    message: "Payment successful! You are now officially assigned to carry the consignment.",
+    message: "Payment successful! You are assigned to carry the consignment. Enter Handover OTP: Travel History → Active Travel → Update Status.",
     typeOfNotif: "travel",
     relatedConsignmentId: payment.consignmentId,
     relatedTravelId: payment.travelId,
@@ -863,7 +863,7 @@ export async function finalizePaymentSuccess(
   await notifyUser(
     carryRequest.requestedBy,
     "Payment Successful",
-    "Payment successful! The consignment is now officially assigned.",
+    "Payment successful! View Handover OTP: Consignment History → Active Consignment.",
     {
       consignmentId: payment.consignmentId,
       requestId: payment.carryRequestId,
@@ -872,7 +872,7 @@ export async function finalizePaymentSuccess(
   await notifyUser(
     carryRequest.travellerId,
     "Consignment Assigned",
-    "Payment successful! You are now officially assigned to carry the consignment.",
+    "Payment successful! Enter Handover OTP: Travel History → Active Travel → Update Status.",
     {
       consignmentId: payment.consignmentId,
       requestId: payment.carryRequestId,
