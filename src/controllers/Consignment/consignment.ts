@@ -331,25 +331,17 @@ export const getConsignments = async (req: AuthRequest, res: Response) => {
 export const locateConsignment = async (req: AuthRequest, res: Response) => {
   try {
     const currentUserId = req.user;
-    const {
-      fromstate,
-      tostate,
-      date,
-      fromLat,
-      fromLng,
-      toLat,
-      toLng,
-      radius,
-    } = req.query as {
-      fromstate: string;
-      tostate: string;
-      date: string;
-      fromLat?: string;
-      fromLng?: string;
-      toLat?: string;
-      toLng?: string;
-      radius?: string;
-    };
+    const { fromstate, tostate, date, fromLat, fromLng, toLat, toLng, radius } =
+      req.query as {
+        fromstate: string;
+        tostate: string;
+        date: string;
+        fromLat?: string;
+        fromLng?: string;
+        toLat?: string;
+        toLng?: string;
+        radius?: string;
+      };
 
     if (!fromstate || !tostate || !date) {
       return res
@@ -448,10 +440,7 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
       toConditions.push({
         toCoordinates: {
           $geoWithin: {
-            $centerSphere: [
-              [destCoords.lng, destCoords.lat],
-              radiusInRadians,
-            ],
+            $centerSphere: [[destCoords.lng, destCoords.lat], radiusInRadians],
           },
         },
       });
@@ -473,6 +462,7 @@ export const locateConsignment = async (req: AuthRequest, res: Response) => {
         },
       ],
     })
+      .populate("senderId", "firstName lastName rating")
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
@@ -512,7 +502,10 @@ export const locateConsignmentById = async (
     if (!Types.ObjectId.isValid(consignmentId)) {
       return res.status(400).json({ message: "Invalid consignment ID format" });
     }
-    const consignment = await ConsignmentModel.findById(consignmentId);
+    const consignment = await ConsignmentModel.findById(consignmentId).populate(
+      "senderId",
+      "firstName lastName rating"
+    );
     if (!consignment) {
       return res.status(404).json({ message: "No consignment found" });
     }
@@ -755,12 +748,12 @@ export const carryRequestBySender = async (req: AuthRequest, res: Response) => {
       requestId: carryRequestBySender._id,
       relatedTravelId: travelId,
     });
-    
+
     // Send push notification to the traveller
     await notifyUser(travel.travelerId, title, message, {
       type: typeOfNotif,
       consignmentId: consignment._id,
-      requestId: carryRequestBySender._id
+      requestId: carryRequestBySender._id,
     });
     if (!notification) {
       return res
@@ -882,12 +875,12 @@ export const carryRequestByTraveller = async (
       requestId: carryRequestByTraveller._id,
       relatedTravelId: travelId,
     });
-    
+
     // Send push notification to the sender
     await notifyUser(consignmentSenderId, title, message, {
       type: typeOfNotif,
       consignmentId: consignment._id,
-      requestId: carryRequestByTraveller._id
+      requestId: carryRequestByTraveller._id,
     });
     console.log(notification);
 
@@ -1136,23 +1129,56 @@ export const acceptCarryRequest = async (req: AuthRequest, res: Response) => {
       typeof userId === "string" // acceptor
         ? userId
         : userId._id,
+      carryRequest.travellerId, // traveller
     );
 
     await Notification.create({
       userId: consignment.senderId, // always notify sender to pay
       title: notificationData.title,
       message: notificationData.message,
+      typeOfNotif: "consignment",
       isRead: false,
       relatedConsignmentId: consignment._id,
       requestId: carryRequest._id,
       relatedTravelId: travelId,
     });
-    
+
     // Send push notification to the sender to proceed with payment
-    await notifyUser(consignment.senderId, notificationData.title, notificationData.message, {
-      consignmentId: consignment._id,
-      requestId: carryRequest._id
-    });
+    await notifyUser(
+      consignment.senderId,
+      notificationData.title,
+      notificationData.message,
+      {
+        consignmentId: consignment._id,
+        requestId: carryRequest._id,
+      },
+    );
+
+    if (isSenderAccepting) {
+      const senderName =
+        [sender.firstName, sender.lastName].filter(Boolean).join(" ").trim() ||
+        "Sender";
+      await Notification.create({
+        userId: carryRequest.travellerId,
+        title: "Interest Accepted",
+        message: `${senderName} accepted your interest to carry "${consignment.description}". Waiting for sender payment.`,
+        typeOfNotif: "travel",
+        isRead: false,
+        relatedConsignmentId: consignment._id,
+        requestId: carryRequest._id,
+        relatedTravelId: travelId,
+      });
+
+      await notifyUser(
+        carryRequest.travellerId,
+        "Interest Accepted",
+        `${senderName} accepted your interest to carry "${consignment.description}". Waiting for sender payment.`,
+        {
+          consignmentId: consignment._id,
+          requestId: carryRequest._id,
+        },
+      );
+    }
 
     await emitPaymentRequest((sender._id as Types.ObjectId).toString(), {
       consignmentId: consignment._id.toString(),
@@ -1405,11 +1431,16 @@ export const updateTravelConsignmentStatus = async (
         ],
         { session },
       );
-      
+
       // Push notification for sender
-      await notifyUser(consignment.senderId, notifSender.title, notifSender.message, {
-        travelConsignmentId: travelConsignment._id
-      });
+      await notifyUser(
+        consignment.senderId,
+        notifSender.title,
+        notifSender.message,
+        {
+          travelConsignmentId: travelConsignment._id,
+        },
+      );
 
       // EMIT socket event
       // Notify sender
@@ -1513,11 +1544,16 @@ export const updateTravelConsignmentStatus = async (
         ],
         { session },
       );
-      
+
       // Push notification for sender
-      await notifyUser(consignment.senderId, notifSender.title, notifSender.message, {
-        travelConsignmentId: travelConsignment._id
-      });
+      await notifyUser(
+        consignment.senderId,
+        notifSender.title,
+        notifSender.message,
+        {
+          travelConsignmentId: travelConsignment._id,
+        },
+      );
 
       // EMIT socket event
 

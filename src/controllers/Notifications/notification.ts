@@ -37,11 +37,56 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
     // console.log("notifications: ", notifications);
     // console.log("total notifications: ", total);
 
-    // Transform notifications to include status
+    // Transform notifications to include status, category, and typeOfNotif
     const transformedNotifications = notifications.map((notif) => {
       const carryRequest = notif.requestId as any;
+
+      // Determine accurate category/typeOfNotif: Respect stored typeOfNotif first
+      let category = notif.typeOfNotif;
+      const titleLower = notif.title?.toLowerCase() || "";
+      const msgLower = notif.message?.toLowerCase() || "";
+
+      // Only deduce category if missing or generic
+      if (!category || category === "general") {
+        if (
+          msgLower.includes("requested you to carry") ||
+          msgLower.includes("to carry their consignment") ||
+          msgLower.includes("for your travel") ||
+          msgLower.includes("on your travel") ||
+          msgLower.includes("your travel") ||
+          msgLower.includes("your trip") ||
+          titleLower === "new carry request" ||
+          titleLower.includes("travel")
+        ) {
+          category = "travel";
+        } else if (
+          msgLower.includes("not accepted your consignment") ||
+          msgLower.includes("has not accepted your") ||
+          msgLower.includes("your carry request") ||
+          msgLower.includes("your consignment") ||
+          msgLower.includes("to carry your consignment") ||
+          msgLower.includes("interest to carry") ||
+          msgLower.includes("interest of the traveler") ||
+          msgLower.includes("consignment collected") ||
+          msgLower.includes("consignment delivered") ||
+          msgLower.includes("consignment handed over") ||
+          msgLower.includes("cancelled their travel") ||
+          titleLower.includes("interest to carry") ||
+          titleLower.includes("request accepted") ||
+          titleLower.includes("consignment")
+        ) {
+          category = "consignment";
+        } else if (notif.relatedTravelId && !notif.relatedConsignmentId) {
+          category = "travel";
+        } else {
+          category = "consignment";
+        }
+      }
+
       return {
         ...notif,
+        category,
+        typeOfNotif: category,
         status: carryRequest?.status || null,
       };
     });
@@ -133,9 +178,12 @@ export const notificationHelper = async (
   typeOfNotif: "travel" | "consignment" | "general",
   userId: string | Types.ObjectId,
   acceptorUserId?: string | Types.ObjectId,
+  otherPartyUserId?: string | Types.ObjectId,
 ) => {
   const user = await User.findById(userId).select("firstName lastName");
-  const name = user ? `${user.firstName} ${user.lastName}` : "Unknown user";
+  const name = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "A user"
+    : "Unknown user";
   const receiverName = consignment.receiverName || "The receiver";
 
   switch (type) {
@@ -193,29 +241,36 @@ export const notificationHelper = async (
         message: `Handover of your consignment "${consignment.consignmentId}" failed. Please contact the traveller.`,
         typeOfNotif,
       };
-    // case 'carryRequestAccepted':
-    //   return {
-    //     title: 'Request Accepted',
-    //     message: `Carry request of your consignment "${consignment.description}" has been accepted by ${name}. Please proceed to payment.`,
-    //     typeOfNotif,
-    //   };
 
     case "carryRequestAccepted": {
       const acceptor =
         await User.findById(acceptorUserId).select("firstName lastName");
       const acceptorName = acceptor
-        ? `${acceptor.firstName} ${acceptor.lastName}`
+        ? [acceptor.firstName, acceptor.lastName].filter(Boolean).join(" ").trim() || "The user"
         : "";
 
       // Sender is the one receiving this notification
-      const senderId = consignment?.senderId?.toString();
+      const senderId = (consignment?.senderId?._id || consignment?.senderId)?.toString();
       const isSenderAccepting = senderId === acceptorUserId?.toString();
+
+      let message = "";
+      if (isSenderAccepting) {
+        let travellerName = "Traveler";
+        if (otherPartyUserId) {
+          const travellerUser = await User.findById(otherPartyUserId).select("firstName lastName");
+          if (travellerUser) {
+            const nameStr = [travellerUser.firstName, travellerUser.lastName].filter(Boolean).join(" ").trim();
+            if (nameStr) travellerName = `Traveler ${nameStr}`;
+          }
+        }
+        message = `You accepted the Interest of ${travellerName} to carry your consignment "${consignment.description}". Please proceed to Payment.`;
+      } else {
+        message = `Your carry request for "${consignment.description}" has been accepted by ${acceptorName}. Please proceed to payment.`;
+      }
 
       return {
         title: "Request Accepted",
-        message: isSenderAccepting
-          ? `Your carry request for "${consignment.description}" has been accepted. Please proceed to payment.`
-          : `Your carry request for "${consignment.description}" has been accepted by ${acceptorName}. Please proceed to payment.`,
+        message,
         typeOfNotif,
       };
     }

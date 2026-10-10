@@ -194,6 +194,7 @@ import Payment from "../../models/payment.model";
 import ConsignmentModel from "../../models/consignment.model";
 import { Refund } from "../../models/refund.model";
 import logger from "../../lib/logger";
+import Notification from "../../models/notification.model";
 import { notifyUser } from "../../lib/pushNotification";
 
 /**
@@ -275,6 +276,15 @@ export const initiateRefund = async (req: AdminAuthRequest, res: Response) => {
     );
 
     // Notify sender about the refund initiation
+    await Notification.create({
+      userId: consignment.senderId,
+      title: "Refund Initiated",
+      message: `A refund of ₹${refundAmountRupees} has been initiated and is pending admin approval.`,
+      typeOfNotif: "consignment",
+      relatedConsignmentId: consignment._id,
+      isRead: false,
+    });
+
     await notifyUser(
       consignment.senderId,
       "Refund Initiated",
